@@ -8,6 +8,14 @@
     "owner": "adamdunkley",
     "versions": [
       {
+        "changelog": "Fix Queue/Play when the speaker has no Cloud Queue session\r\n\r\nCreate a live session and retry load instead of leaking ERROR_INVALID_OBJECT_ID, and always send track metadata on resume.\r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.0.0...v0.1.1.0",
+        "checksum": "617a8fb83c357de9b86dc38dd7ebfc79",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.1.0/sonos_0.1.1.0.zip",
+        "targetAbi": "10.11.0.0",
+        "timestamp": "2026-09-03T12:21:10Z",
+        "version": "0.1.1.0"
+      },
+      {
         "changelog": "**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/commits/v0.1.0.0",
         "checksum": "596bc0ca40e389f96dbcdbf3eeb857ba",
         "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.0.0/sonos_0.1.0.0.zip",
