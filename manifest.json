@@ -6,6 +6,15 @@
     "name": "Sonos",
     "overview": "Play Jellyfin music to Sonos S2 speakers",
     "owner": "adamdunkley",
-    "versions": []
+    "versions": [
+      {
+        "changelog": "**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/commits/v0.1.0.0",
+        "checksum": "596bc0ca40e389f96dbcdbf3eeb857ba",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.0.0/sonos_0.1.0.0.zip",
+        "targetAbi": "10.11.0.0",
+        "timestamp": "2026-09-03T09:18:28Z",
+        "version": "0.1.0.0"
+      }
+    ]
   }
 ]
