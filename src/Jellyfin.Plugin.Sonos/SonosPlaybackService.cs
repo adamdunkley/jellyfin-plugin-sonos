@@ -865,20 +865,8 @@ public sealed class SonosPlaybackService
             current = queue.Items[queue.CurrentIndex];
         }
 
-        var queueBase = published + "/Sonos/queue/" + Uri.EscapeDataString(coordinator.Id) + "/v2.3/";
         var mediaUrl = published + "/Sonos/stream/" + current.StreamToken;
-        var positionMillis = startPositionTicks > 0
-            ? (int)Math.Min(startPositionTicks / TimeSpan.TicksPerMillisecond, int.MaxValue)
-            : 0;
-        var load = new LoadCloudQueueRequest
-        {
-            QueueBaseUrl = queueBase,
-            ItemId = current.QueueItemId,
-            QueueVersion = queue.QueueVersion,
-            TrackMetadata = positionMillis > 0 ? null : CloudQueueJson.Track(published, current),
-            PositionMillis = positionMillis,
-            Extra = new Dictionary<string, string> { ["appContext"] = queue.UserId.ToString("N") }
-        };
+        var load = BuildLoadCloudQueueRequest(coordinator.Id, queue, current, published, startPositionTicks);
 
         try
         {
@@ -1104,8 +1092,56 @@ public sealed class SonosPlaybackService
         return true;
     }
 
-    private static ObjectResult MapControlException(SonosControlException ex, DiscoveredPlayer coordinator)
+    /// <summary>
+    /// Builds the LAN <c>loadCloudQueue</c> body for the current queue item.
+    /// </summary>
+    /// <param name="coordinatorId">Coordinator id used in the queue base URL.</param>
+    /// <param name="queue">Logical queue (version and user).</param>
+    /// <param name="current">Item to start on.</param>
+    /// <param name="published">Published base URL.</param>
+    /// <param name="startPositionTicks">Resume offset into the item.</param>
+    /// <returns>The load request.</returns>
+    internal static LoadCloudQueueRequest BuildLoadCloudQueueRequest(
+        string coordinatorId,
+        LogicalQueue queue,
+        LogicalQueueItem current,
+        string published,
+        long startPositionTicks)
     {
+        var positionMillis = startPositionTicks > 0
+            ? (int)Math.Min(startPositionTicks / TimeSpan.TicksPerMillisecond, int.MaxValue)
+            : 0;
+        return new LoadCloudQueueRequest
+        {
+            QueueBaseUrl = published + "/Sonos/queue/" + Uri.EscapeDataString(coordinatorId) + "/v2.3/",
+            ItemId = current.QueueItemId,
+            QueueVersion = queue.QueueVersion,
+            TrackMetadata = CloudQueueJson.Track(published, current),
+            PositionMillis = positionMillis,
+            Extra = new Dictionary<string, string> { ["appContext"] = queue.UserId.ToString("N") }
+        };
+    }
+
+    /// <summary>
+    /// Maps a speaker control failure to an HTTP problem for <c>/Sonos</c> clients.
+    /// </summary>
+    /// <param name="ex">Control exception.</param>
+    /// <param name="coordinator">Target player.</param>
+    /// <returns>Problem result.</returns>
+    internal static ObjectResult MapControlException(SonosControlException ex, DiscoveredPlayer coordinator)
+    {
+        if (ex.IsMissingPlaybackSession())
+        {
+            var missingDetails = ex.HttpStatus is int missingHttp
+                ? new Dictionary<string, object?> { ["httpStatus"] = missingHttp, ["player"] = coordinator.Name }
+                : new Dictionary<string, object?> { ["player"] = coordinator.Name };
+            return ProblemResults.Create(
+                StatusCodes.Status409Conflict,
+                "PlayerUnavailable",
+                coordinator.Name + " has no Sonos session",
+                missingDetails);
+        }
+
         var status = ex.ErrorCode switch
         {
             "LanAuthRequired" => StatusCodes.Status403Forbidden,

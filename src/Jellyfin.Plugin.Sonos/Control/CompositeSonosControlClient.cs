@@ -77,14 +77,8 @@ public sealed class CompositeSonosControlClient : ISonosControlClient
         => PreferLanAsync(player, () => _lan.GetTransportAsync(player, cancellationToken), () => _soap.GetTransportAsync(player, cancellationToken));
 
     /// <inheritdoc />
-    public async Task LoadCloudQueueAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)
-    {
-        var appContext = request.Extra is not null && request.Extra.TryGetValue("appContext", out var ctx)
-            ? ctx
-            : "default";
-        await _lan.EnsureSessionAsync(player, appContext, cancellationToken).ConfigureAwait(false);
-        await _lan.LoadCloudQueueAsync(player, request, cancellationToken).ConfigureAwait(false);
-    }
+    public Task LoadCloudQueueAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)
+        => _lan.LoadCloudQueueAsync(player, request, cancellationToken);
 
     /// <inheritdoc />
     public Task RefreshCloudQueueAsync(DiscoveredPlayer player, CancellationToken cancellationToken)

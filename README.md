@@ -37,8 +37,6 @@ dotnet test -c Release
 2. Dashboard → Plugins → Catalog → find **Sonos** → Install.
 3. Restart Jellyfin.
 
-The catalog lists GitHub Releases. After a tagged release (`v0.1.0.0` and matching versions in `Directory.Build.props` / `build.yaml`), Catalog can install that version.
-
 ### Sideloading
 
 Set `JELLYFIN_ROOT` to the Jellyfin config directory (the folder that contains `data/plugins`), then run:

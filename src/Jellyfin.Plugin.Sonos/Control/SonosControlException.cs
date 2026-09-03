@@ -1,5 +1,4 @@
 using System;
-using System.Net;
 
 namespace Jellyfin.Plugin.Sonos.Control;
 
@@ -26,4 +25,27 @@ public sealed class SonosControlException : Exception
 
     /// <summary>Gets the HTTP status when known.</summary>
     public int? HttpStatus { get; }
+
+    /// <summary>
+    /// Returns true when the speaker reports that this group has no usable Cloud Queue session.
+    /// </summary>
+    /// <returns>True when Queue/Play should create a session and retry, or map to <c>PlayerUnavailable</c>.</returns>
+    public bool IsMissingPlaybackSession()
+    {
+        if (string.Equals(ErrorCode, "ERROR_INVALID_OBJECT_ID", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ErrorCode, "ERROR_SESSION_EVICTED", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var message = Message ?? string.Empty;
+        if (message.Contains("no session on this player", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return (string.Equals(ErrorCode, "sessionError", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ErrorCode, "playbackError", StringComparison.OrdinalIgnoreCase))
+               && message.Contains("no session", StringComparison.OrdinalIgnoreCase);
+    }
 }

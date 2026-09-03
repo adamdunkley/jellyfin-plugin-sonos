@@ -105,7 +105,7 @@ public sealed class LanControlClient : IAsyncDisposable
     /// <returns>A task.</returns>
     public Task EnsureSessionAsync(DiscoveredPlayer player, string appContext, CancellationToken cancellationToken)
     {
-        return _gate.RunAsync(player.Id, () => EnsureSessionCoreAsync(player, appContext, cancellationToken), cancellationToken);
+        return _gate.RunAsync(player.Id, () => EnsureSessionCoreAsync(player, appContext, forceCreate: false, cancellationToken), cancellationToken);
     }
 
     /// <summary>
@@ -117,45 +117,28 @@ public sealed class LanControlClient : IAsyncDisposable
     /// <returns>A task.</returns>
     public Task LoadCloudQueueAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)
     {
+        var appContext = request.Extra is not null && request.Extra.TryGetValue("appContext", out var ctx)
+            ? ctx
+            : "default";
         return _gate.RunAsync(
             player.Id,
             async () =>
             {
-                var conn = RequireConnection(player);
-                var body = new JsonObject
+                await EnsureSessionCoreAsync(player, appContext, forceCreate: false, cancellationToken).ConfigureAwait(false);
+                try
                 {
-                    ["queueBaseUrl"] = request.QueueBaseUrl,
-                    ["itemId"] = request.ItemId,
-                    ["queueVersion"] = request.QueueVersion,
-                    ["playOnCompletion"] = true
-                };
-                if (request.PositionMillis > 0)
-                {
-                    body["positionMillis"] = request.PositionMillis;
+                    await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);
                 }
-
-                if (!string.IsNullOrEmpty(request.HttpAuthorization))
+                catch (SonosControlException ex) when (ex.IsMissingPlaybackSession())
                 {
-                    body["httpAuthorization"] = request.HttpAuthorization;
+                    var conn = RequireConnection(player);
+                    conn.InvalidateSession();
+                    _logger.LogInformation(
+                        "Cloud Queue session missing on {Player}; creating a new session and retrying load",
+                        player.Name);
+                    await EnsureSessionCoreAsync(player, appContext, forceCreate: true, cancellationToken).ConfigureAwait(false);
+                    await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);
                 }
-
-                if (request.TrackMetadata is not null)
-                {
-                    body["trackMetadata"] = request.TrackMetadata.DeepClone();
-                }
-                else if (!string.IsNullOrEmpty(request.FirstMediaUrl))
-                {
-                    var track = new JsonObject
-                    {
-                        ["type"] = "track",
-                        ["mediaUrl"] = request.FirstMediaUrl,
-                        ["name"] = request.FirstTrackName ?? string.Empty
-                    };
-                    body["trackMetadata"] = track;
-                }
-
-                await SendOnAsync(conn, "playbackSession", "loadCloudQueue", new JsonObject { ["sessionId"] = conn.SessionId }, body, cancellationToken)
-                    .ConfigureAwait(false);
             },
             cancellationToken);
     }
@@ -465,7 +448,7 @@ public sealed class LanControlClient : IAsyncDisposable
             player.GroupId = result.GroupId;
         }
 
-        conn.SessionId = string.Empty;
+        conn.InvalidateSession();
         conn.Subscribed = false;
 
         if (string.IsNullOrEmpty(conn.HouseholdId))
@@ -503,7 +486,46 @@ public sealed class LanControlClient : IAsyncDisposable
         return result;
     }
 
-    private async Task EnsureSessionCoreAsync(DiscoveredPlayer player, string appContext, CancellationToken cancellationToken)
+    private async Task LoadCloudQueueCoreAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)
+    {
+        var conn = RequireConnection(player);
+        var body = new JsonObject
+        {
+            ["queueBaseUrl"] = request.QueueBaseUrl,
+            ["itemId"] = request.ItemId,
+            ["queueVersion"] = request.QueueVersion,
+            ["playOnCompletion"] = true
+        };
+        if (request.PositionMillis > 0)
+        {
+            body["positionMillis"] = request.PositionMillis;
+        }
+
+        if (!string.IsNullOrEmpty(request.HttpAuthorization))
+        {
+            body["httpAuthorization"] = request.HttpAuthorization;
+        }
+
+        if (request.TrackMetadata is not null)
+        {
+            body["trackMetadata"] = request.TrackMetadata.DeepClone();
+        }
+        else if (!string.IsNullOrEmpty(request.FirstMediaUrl))
+        {
+            var track = new JsonObject
+            {
+                ["type"] = "track",
+                ["mediaUrl"] = request.FirstMediaUrl,
+                ["name"] = request.FirstTrackName ?? string.Empty
+            };
+            body["trackMetadata"] = track;
+        }
+
+        await SendOnAsync(conn, "playbackSession", "loadCloudQueue", new JsonObject { ["sessionId"] = conn.SessionId }, body, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task EnsureSessionCoreAsync(DiscoveredPlayer player, string appContext, bool forceCreate, CancellationToken cancellationToken)
     {
         await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
         var conn = RequireConnection(player);
@@ -517,9 +539,17 @@ public sealed class LanControlClient : IAsyncDisposable
             conn.Subscribed = true;
         }
 
-        if (!string.IsNullOrEmpty(conn.SessionId))
+        if (!forceCreate && !string.IsNullOrEmpty(conn.SessionId))
         {
-            return;
+            try
+            {
+                await EnsurePlaybackSessionSubscribedAsync(conn, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (SonosControlException ex) when (ex.IsMissingPlaybackSession())
+            {
+                conn.InvalidateSession();
+            }
         }
 
         var sessionBody = new JsonObject
@@ -528,17 +558,7 @@ public sealed class LanControlClient : IAsyncDisposable
             ["appContext"] = appContext
         };
         JsonNode? session;
-        try
-        {
-            session = await SendOnAsync(
-                conn,
-                "playbackSession",
-                "joinOrCreateSession",
-                new JsonObject { ["groupId"] = conn.GroupId },
-                sessionBody,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (SonosControlException)
+        if (forceCreate)
         {
             session = await SendOnAsync(
                 conn,
@@ -548,14 +568,57 @@ public sealed class LanControlClient : IAsyncDisposable
                 sessionBody,
                 cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            try
+            {
+                session = await SendOnAsync(
+                    conn,
+                    "playbackSession",
+                    "joinOrCreateSession",
+                    new JsonObject { ["groupId"] = conn.GroupId },
+                    sessionBody,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (SonosControlException)
+            {
+                session = await SendOnAsync(
+                    conn,
+                    "playbackSession",
+                    "createSession",
+                    new JsonObject { ["groupId"] = conn.GroupId },
+                    sessionBody,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         conn.SessionId = session is JsonObject s
             ? s["sessionId"]?.GetValue<string>() ?? s["id"]?.GetValue<string>() ?? string.Empty
             : string.Empty;
+        conn.SessionSubscribed = false;
         if (string.IsNullOrEmpty(conn.SessionId))
         {
             throw new SonosControlException("PlayerUnavailable", "LAN Control did not return a session id");
         }
+
+        await EnsurePlaybackSessionSubscribedAsync(conn, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task EnsurePlaybackSessionSubscribedAsync(PlayerConnection conn, CancellationToken cancellationToken)
+    {
+        if (conn.SessionSubscribed || string.IsNullOrEmpty(conn.SessionId))
+        {
+            return;
+        }
+
+        await SendOnAsync(
+            conn,
+            "playbackSession",
+            "subscribe",
+            new JsonObject { ["sessionId"] = conn.SessionId },
+            new JsonObject(),
+            cancellationToken).ConfigureAwait(false);
+        conn.SessionSubscribed = true;
     }
 
     private static string? ResolveGroupId(JsonNode? groups, DiscoveredPlayer player)
@@ -712,6 +775,14 @@ public sealed class LanControlClient : IAsyncDisposable
 
         public bool Subscribed { get; set; }
 
+        public bool SessionSubscribed { get; set; }
+
+        public void InvalidateSession()
+        {
+            SessionId = string.Empty;
+            SessionSubscribed = false;
+        }
+
         public async Task<JsonNode?> SendCommandAsync(
             string ns,
             string command,
@@ -768,20 +839,25 @@ public sealed class LanControlClient : IAsyncDisposable
                     _logger.LogInformation("LAN WS recv command={Command} cmdId={CmdId} pending={Pending}", command, cmdId, !string.IsNullOrEmpty(cmdId) && _pending.ContainsKey(cmdId));
                 }
 
+                var headerType = header?["type"]?.GetValue<string>();
+                var obj = data as JsonObject;
+                var code = obj?["errorCode"]?.GetValue<string>() ?? headerType ?? string.Empty;
+                var reason = obj?["reason"]?.GetValue<string>() ?? obj?["errorCode"]?.GetValue<string>() ?? obj?["message"]?.GetValue<string>() ?? code;
+                if (ShouldInvalidateCachedSession(headerType, code, reason))
+                {
+                    InvalidateSession();
+                }
+
                 if (string.IsNullOrEmpty(cmdId) || !_pending.TryRemove(cmdId, out var tcs))
                 {
                     return;
                 }
 
-                var headerType = header?["type"]?.GetValue<string>();
                 if (string.Equals(headerType, "sessionError", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(headerType, "globalError", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(headerType, "playbackError", StringComparison.OrdinalIgnoreCase)
                     || (data is JsonObject errObj && errObj.ContainsKey("errorCode")))
                 {
-                    var obj = data as JsonObject;
-                    var code = obj?["errorCode"]?.GetValue<string>() ?? headerType ?? "ERROR";
-                    var reason = obj?["reason"]?.GetValue<string>() ?? obj?["errorCode"]?.GetValue<string>() ?? obj?["message"]?.GetValue<string>() ?? code;
                     if (string.Equals(code, "ERROR_CLOUD_QUEUE_SERVICE_ERROR", StringComparison.OrdinalIgnoreCase))
                     {
                         tcs.TrySetException(new SonosControlException(code, reason));
@@ -796,7 +872,7 @@ public sealed class LanControlClient : IAsyncDisposable
                         return;
                     }
 
-                    tcs.TrySetException(new SonosControlException(code, reason));
+                    tcs.TrySetException(new SonosControlException(string.IsNullOrEmpty(code) ? "ERROR" : code, reason));
                     return;
                 }
 
@@ -812,6 +888,22 @@ public sealed class LanControlClient : IAsyncDisposable
             {
                 // Ignore malformed events.
             }
+        }
+
+        private static bool ShouldInvalidateCachedSession(string? headerType, string code, string reason)
+        {
+            if (string.Equals(code, "ERROR_SESSION_EVICTED", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (reason.Contains("no session", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return string.Equals(headerType, "sessionError", StringComparison.OrdinalIgnoreCase)
+                   && new SonosControlException(string.IsNullOrEmpty(code) ? "sessionError" : code, reason).IsMissingPlaybackSession();
         }
 
         public void Dispose()

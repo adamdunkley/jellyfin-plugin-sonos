@@ -102,7 +102,7 @@ JSON errors use a problem body. No stack traces.
 | `QueueNotFound` | 404 | Remove/Move against a coordinator that has never had a plugin queue. |
 | `ItemNotFound` | 404 | Library item missing, not visible to the user, or audio file gone (stream). |
 | `StreamExpired` | 410 | Stream/image token past expiry. Play the queue again to mint new tokens. |
-| `PlayerUnavailable` | 409 | Coordinator offline, LAN websocket failed, grouping timeout, or speaker did not respond. |
+| `PlayerUnavailable` | 409 | Coordinator offline, LAN websocket failed, grouping timeout, speaker did not respond, or Cloud Queue session create/load failed. |
 | `NotSupported` | 409 | Control path cannot perform the command (mapped from SOAP-only fallback). Create-group may still succeed via SOAP `x-rincon`. |
 | `CommandFailed` | 409 | LAN Control command failed. |
 | `ERROR_CLOUD_QUEUE_SERVICE_ERROR` | 502 | Speaker reported a Cloud Queue failure (speaker could not fetch the plugin queue URL). |
