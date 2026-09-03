@@ -1,0 +1,11 @@
+[
+  {
+    "category": "Music",
+    "description": "Discovers Sonos S2 players on the LAN and plays the Jellyfin music library using native Sonos queueing.\n",
+    "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
+    "name": "Sonos",
+    "overview": "Play Jellyfin music to Sonos S2 speakers",
+    "owner": "adamdunkley",
+    "versions": []
+  }
+]

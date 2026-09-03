@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType>
+    <friendlyName>192.0.2.20 - Sonos Test Speaker</friendlyName>
+    <modelNumber>TEST</modelNumber>
+    <modelName>Sonos Test Speaker</modelName>
+    <displayName>Test Speaker</displayName>
+    <roomName>Room A</roomName>
+    <UDN>uuid:RINCON_TESTPLAYER1</UDN>
+  </device>
+</root>

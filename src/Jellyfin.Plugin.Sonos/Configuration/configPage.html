@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Sonos</title>
+</head>
+<body>
+    <div id="SonosConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="SonosConfigForm">
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="Enabled" name="Enabled" type="checkbox" is="emby-checkbox" />
+                            <span>Enabled</span>
+                        </label>
+                        <div class="fieldDescription">Master switch. When off, discovery and playback stop.</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DefaultUserId">Default user</label>
+                        <select is="emby-select" id="DefaultUserId" name="DefaultUserId" class="emby-select-withcolor emby-select">
+                            <option value="">None</option>
+                        </select>
+                        <div class="fieldDescription">Fallback Jellyfin user for unattended Play To. Authenticated <code>/Sonos/Queue/Play</code> calls use the calling user instead.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PublishedBaseUrl">Published base URL</label>
+                        <input id="PublishedBaseUrl" name="PublishedBaseUrl" type="text" is="emby-input" placeholder="http://192.160.1.2:8096/media" />
+                        <div class="fieldDescription">Address speakers use to fetch Cloud Queue and audio. Must be a LAN HTTP URL the speaker can route to — not localhost, not a Docker bridge IP, and not a reverse-proxy HTTPS hostname unless speakers can complete TLS to it. Include the server base path if Jellyfin is configured with one.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="SeedPlayerIps">Seed player IPs</label>
+                        <input id="SeedPlayerIps" name="SeedPlayerIps" type="text" is="emby-input" placeholder="192.168.1.3, 192.168.1.4" />
+                        <div class="fieldDescription">Comma-separated IPs. Use these when multicast mDNS/SSDP cannot reach the speakers (for example Jellyfin in a Docker bridge). Seed IPs are then the primary discovery path.</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="PreferredTranscodeCodec">Preferred transcode codec</label>
+                        <select is="emby-select" id="PreferredTranscodeCodec" name="PreferredTranscodeCodec" class="emby-select-withcolor emby-select">
+                            <option value="Flac">FLAC (default)</option>
+                            <option value="Aac">AAC</option>
+                        </select>
+                        <div class="fieldDescription">Used when a library file is outside Sonos's supported matrix (DSD, hi-res FLAC, odd containers).</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="IgnoredPlayerIds">Ignored player IDs</label>
+                        <input id="IgnoredPlayerIds" name="IgnoredPlayerIds" type="text" is="emby-input" placeholder="RINCON_..." />
+                        <div class="fieldDescription">Comma-separated RINCON ids that should never be exposed or controlled.</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="VerboseProtocolLogging" name="VerboseProtocolLogging" type="checkbox" is="emby-checkbox" />
+                            <span>Verbose Sonos protocol logging</span>
+                        </label>
+                        <div class="fieldDescription">Writes Cloud Queue paths, versions, and control commands to the Jellyfin log. Never logs stream tokens or API keys.</div>
+                    </div>
+
+                    <p class="fieldDescription">
+                        If speakers are discovered but commands return 403, disable LAN authentication in the Sonos app
+                        (privacy / third-party LAN integrations). No Sonos developer key is required for LAN S2 control.
+                    </p>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var SonosConfig = {
+                pluginUniqueId: 'cef190c1-177d-4018-8271-7a3aa6033a3f'
+            };
+
+            function populateUsers(selectedId) {
+                var select = document.querySelector('#DefaultUserId');
+                return ApiClient.getJSON(ApiClient.getUrl('Users')).then(function (users) {
+                    users.forEach(function (user) {
+                        var option = document.createElement('option');
+                        option.value = user.Id;
+                        option.textContent = user.Name;
+                        select.appendChild(option);
+                    });
+                    if (selectedId) {
+                        select.value = selectedId;
+                    }
+                }).catch(function () {
+                    // Leave the empty "None" option if the user list cannot be loaded.
+                });
+            }
+
+            document.querySelector('#SonosConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(SonosConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#Enabled').checked = config.Enabled;
+                        document.querySelector('#PublishedBaseUrl').value = config.PublishedBaseUrl || '';
+                        document.querySelector('#SeedPlayerIps').value = config.SeedPlayerIps || '';
+                        document.querySelector('#PreferredTranscodeCodec').value = config.PreferredTranscodeCodec || 'Flac';
+                        document.querySelector('#IgnoredPlayerIds').value = config.IgnoredPlayerIds || '';
+                        document.querySelector('#VerboseProtocolLogging').checked = config.VerboseProtocolLogging;
+                        return populateUsers(config.DefaultUserId).then(function () {
+                            Dashboard.hideLoadingMsg();
+                        });
+                    });
+                });
+
+            document.querySelector('#SonosConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(SonosConfig.pluginUniqueId).then(function (config) {
+                        config.Enabled = document.querySelector('#Enabled').checked;
+                        config.DefaultUserId = document.querySelector('#DefaultUserId').value;
+                        config.PublishedBaseUrl = document.querySelector('#PublishedBaseUrl').value.trim();
+                        config.SeedPlayerIps = document.querySelector('#SeedPlayerIps').value.trim();
+                        config.PreferredTranscodeCodec = document.querySelector('#PreferredTranscodeCodec').value;
+                        config.IgnoredPlayerIds = document.querySelector('#IgnoredPlayerIds').value.trim();
+                        config.VerboseProtocolLogging = document.querySelector('#VerboseProtocolLogging').checked;
+                        ApiClient.updatePluginConfiguration(SonosConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>

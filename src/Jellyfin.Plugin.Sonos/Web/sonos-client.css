@@ -1,0 +1,111 @@
+/* Sonos web client — matches jellyfin-web header / now-playing chrome. */
+
+.headerSonosButton,
+.btnSonos {
+    flex-shrink: 0;
+}
+
+.headerSonosButton svg,
+.btnSonos svg {
+    width: 1.5rem;
+    height: 1.5rem;
+    fill: currentColor;
+}
+
+.sonos-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.sonos-dialog {
+    position: fixed;
+    z-index: 1501;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(26rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 2rem));
+    overflow: auto;
+    padding: 1rem 1.1rem 1.15rem;
+    border-radius: 0.4rem;
+    background: #202020;
+    color: #fff;
+    box-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.5);
+}
+
+.sonos-dialog h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.15rem;
+    font-weight: 500;
+}
+
+.sonos-status {
+    margin: 0 0 0.85rem;
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.sonos-status.sonos-error {
+    color: #ff6b6b;
+    opacity: 1;
+}
+
+.sonos-list {
+    list-style: none;
+    margin: 0 0 0.85rem;
+    padding: 0;
+}
+
+.sonos-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sonos-row label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.sonos-local-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    margin: 0 0 0.35rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sonos-playon:disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.sonos-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.sonos-empty {
+    margin: 0.5rem 0 0.85rem;
+    opacity: 0.8;
+    font-size: 0.9rem;
+}
+
+.sonos-confirm-backdrop {
+    z-index: 1502;
+}
+
+.sonos-confirm {
+    z-index: 1503;
+}

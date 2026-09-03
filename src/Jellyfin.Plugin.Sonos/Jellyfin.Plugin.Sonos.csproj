@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(JellyfinTargetFramework)</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.Sonos</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <CodeAnalysisRuleSet>..\..\jellyfin.ruleset</CodeAnalysisRuleSet>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SerilogAnalyzer" Version="0.15.0" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="All" />
+    <PackageReference Include="SmartAnalyzers.MultithreadingAnalyzer" Version="1.1.31" PrivateAssets="All" />
+  </ItemGroup>
+
+    <ItemGroup>
+      <InternalsVisibleTo Include="Jellyfin.Plugin.Sonos.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="Configuration\configPage.html" />
+      <None Remove="Web\sonos-client.js" />
+      <None Remove="Web\player-handoff.js" />
+      <None Remove="Web\sonos-client.css" />
+      <EmbeddedResource Include="Configuration\configPage.html" />
+      <EmbeddedResource Include="Web\sonos-client.js" />
+      <EmbeddedResource Include="Web\player-handoff.js" />
+      <EmbeddedResource Include="Web\sonos-client.css" />
+  </ItemGroup>
+
+</Project>
