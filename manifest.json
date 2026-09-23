@@ -1,12 +1,20 @@
 [
   {
     "category": "Music",
-    "description": "Discovers Sonos S2 players on the LAN and plays the Jellyfin music library using native Sonos queueing.\n",
+    "description": "Discovers Sonos S2 players on the LAN and plays the Jellyfin music library using native Sonos queueing. Dual-builds for Jellyfin 10.11 (net9) and 12.x (net10).\n",
     "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
     "name": "Sonos",
     "overview": "Play Jellyfin music to Sonos S2 speakers",
     "owner": "adamdunkley",
     "versions": [
+      {
+        "changelog": "Fixes to support Jellyfin 12.x",
+        "checksum": "a035f4064acd473a1f3d7adbf800b27a",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.2.0/sonos_0.1.2.0_12.0.zip",
+        "targetAbi": "12.0.0.0",
+        "timestamp": "2026-09-23T09:28:05Z",
+        "version": "0.1.2.0"
+      },
       {
         "changelog": "Fix Queue/Play when the speaker has no Cloud Queue session\r\n\r\nCreate a live session and retry load instead of leaking ERROR_INVALID_OBJECT_ID, and always send track metadata on resume.\r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.0.0...v0.1.1.0",
         "checksum": "617a8fb83c357de9b86dc38dd7ebfc79",
