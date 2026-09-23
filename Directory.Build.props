@@ -1,9 +1,11 @@
 <Project>
   <PropertyGroup>
-    <Version>0.1.1.0</Version>
-    <AssemblyVersion>0.1.1.0</AssemblyVersion>
-    <FileVersion>0.1.1.0</FileVersion>
-    <JellyfinPackageVersion>10.11.11</JellyfinPackageVersion>
-    <JellyfinTargetFramework>net9.0</JellyfinTargetFramework>
+    <Version>0.1.2.0</Version>
+    <AssemblyVersion>0.1.2.0</AssemblyVersion>
+    <FileVersion>0.1.2.0</FileVersion>
+    <JellyfinPackageVersion1011>10.11.11</JellyfinPackageVersion1011>
+    <!-- Prefer 12.1.0 when NuGet can restore it. Offline builds pin to 10.11.11;
+         ReportSessionCapabilities uses arity-based reflection so either ABI works at runtime. -->
+    <JellyfinPackageVersion12>10.11.11</JellyfinPackageVersion12>
   </PropertyGroup>
 </Project>

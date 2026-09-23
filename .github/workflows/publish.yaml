@@ -20,7 +20,10 @@ jobs:
         if: github.event_name == 'release'
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
+          # net9.0 (JF 10.11) + net10.0 (JF 12.x); global.json requires SDK 10
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Package plugin
         if: github.event_name == 'release'

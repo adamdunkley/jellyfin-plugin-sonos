@@ -1,17 +1,19 @@
 # Jellyfin Sonos Plugin
 
-A Jellyfin **10.11** plugin that discovers Sonos **S2** speakers on the LAN and enables direct streaming from Jellyfin to Sonos. It includes auto speaker discovery, grouping, updates to the Jellyfin web UI and a comprehensive API.
+A Jellyfin plugin that discovers Sonos **S2** speakers on the LAN and enables direct streaming from Jellyfin to Sonos. It includes auto speaker discovery, grouping, updates to the Jellyfin web UI and a comprehensive API.
+
+Supports **Jellyfin 10.11** and **12.x** from one multi-targeted codebase.
 
 ![](assets/jellyfin-plugin-sonos.png)
 
 ## Target server
 
-|                 | Target                                                |
-| --------------- | ----------------------------------------------------- |
-| Jellyfin        | 10.11.x (`targetAbi` 10.11.0.0)                       |
-| Packages        | `Jellyfin.Controller` / `Jellyfin.Model` **10.11.11** |
-| Framework       | `net9.0`                                              |
-| Sideload folder | `$JELLYFIN_ROOT/data/plugins/Sonos_<version>/`        |
+|                 | 10.11.x                                              | 12.0 / 12.1                                          |
+| --------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| `targetAbi`     | `10.11.0.0`                                          | `12.0.0.0`                                           |
+| Compile packages | `Jellyfin.Controller` / `Model` **10.11.11**        | same (host supplies runtime assemblies)              |
+| Framework       | `net9.0`                                             | `net10.0`                                            |
+| Sideload folder | `$JELLYFIN_ROOT/data/plugins/Sonos_<version>/`       | same                                                 |
 
 ## Installation
 
@@ -26,11 +28,13 @@ A Jellyfin **10.11** plugin that discovers Sonos **S2** speakers on the LAN and 
 
 ## Building
 
-Requires the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (builds both `net9.0` and `net10.0`).
 
 ```bash
 dotnet build -c Release
 dotnet test -c Release
+dotnet test -c Release -f net9.0
+dotnet test -c Release -f net10.0
 ```
 
 ### Sideloading
@@ -38,10 +42,17 @@ dotnet test -c Release
 Set `JELLYFIN_ROOT` to the Jellyfin config directory (the folder that contains `data/plugins`), then run:
 
 ```bash
+# Jellyfin 12.x (default)
 JELLYFIN_ROOT=/path/to/jellyfin ./scripts/sideload.sh
+
+# Jellyfin 10.11
+JELLYFIN_ROOT=/path/to/jellyfin JELLYFIN_ABI=10.11 ./scripts/sideload.sh
+
+# If NuGet is unavailable, reuse an already-built output:
+# JELLYFIN_ROOT=... SKIP_RESTORE=1 ./scripts/sideload.sh
 ```
 
-This builds the plugin and copies `Jellyfin.Plugin.Sonos.dll` and `meta.json` to `$JELLYFIN_ROOT/data/plugins/Sonos_<version>/`. Restart Jellyfin afterwards and check Dashboard → Plugins for the updated plugin.
+`JELLYFIN_ABI` is `12.0` (default) or `10.11`. That publishes the matching TFM and copies `Jellyfin.Plugin.Sonos.dll` plus `meta.json` to `$JELLYFIN_ROOT/data/plugins/Sonos_<version>/`. Restart Jellyfin afterwards. Dashboard → Plugins should list **Sonos**.
 
 ## HTTP API
 
