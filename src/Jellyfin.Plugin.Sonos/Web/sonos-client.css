@@ -109,3 +109,15 @@
 .sonos-confirm {
     z-index: 1503;
 }
+
+/* JF12 modern AppToolbar (MUI) — keep speaker icon aligned with Cast. */
+.headerSonosButton svg {
+    width: 1.5rem;
+    height: 1.5rem;
+    fill: currentColor;
+    display: block;
+}
+
+.headerSonosButton:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}

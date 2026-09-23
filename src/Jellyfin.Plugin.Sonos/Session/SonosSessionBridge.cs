@@ -166,7 +166,11 @@ public sealed class SonosSessionBridge : BackgroundService
             _sessions.OnSessionControllerConnected(session);
         }
 
-        _sessions.ReportCapabilities(session.Id, BuildCapabilities());
+        // JF 10.11: ReportCapabilities(sessionId, caps)
+        // JF 12.x:   ReportCapabilities(controllingSessionId, sessionId, caps)
+        // Never call the compile-time overload — net10 builds may still reference 10.11
+        // assemblies, and GetMethod(exact types) fails across plugin load contexts.
+        ReportSessionCapabilities(session.Id, BuildCapabilities());
 
         var queueResult = await _playback.GetQueueAsync(player.Id, cancellationToken).ConfigureAwait(false);
         var queue = ActionResultReader.Value<QueueResponse>(queueResult);
@@ -216,6 +220,72 @@ public sealed class SonosSessionBridge : BackgroundService
         }
 
         return _users.GetUserById(id);
+    }
+
+    private void ReportSessionCapabilities(string sessionId, ClientCapabilities capabilities)
+    {
+        // Public overloads only — SessionManager also has a private
+        // ReportCapabilities(SessionInfo, ClientCapabilities, bool) we must not hit.
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
+
+        static MethodInfo? Resolve(Type type)
+        {
+            MethodInfo? threeArg = null;
+            MethodInfo? twoArg = null;
+            foreach (var method in type.GetMethods(flags))
+            {
+                if (!string.Equals(method.Name, "ReportCapabilities", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var parameters = method.GetParameters();
+
+                // JF12: (string controllingSessionId, string sessionId, ClientCapabilities)
+                if (parameters.Length == 3
+                    && parameters[0].ParameterType == typeof(string)
+                    && parameters[1].ParameterType == typeof(string))
+                {
+                    threeArg = method;
+                }
+
+                // JF10.11: (string sessionId, ClientCapabilities)
+                else if (parameters.Length == 2
+                    && parameters[0].ParameterType == typeof(string))
+                {
+                    twoArg = method;
+                }
+            }
+
+            return threeArg ?? twoArg;
+        }
+
+        var runtimeType = _sessions.GetType();
+        var method = Resolve(runtimeType);
+        if (method is null)
+        {
+            foreach (var iface in runtimeType.GetInterfaces())
+            {
+                method = Resolve(iface);
+                if (method is not null)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (method is null)
+        {
+            _logger.LogWarning(
+                "ReportCapabilities not found on session manager type {Type}",
+                runtimeType.FullName);
+            return;
+        }
+
+        object[] args = method.GetParameters().Length == 3
+            ? [string.Empty, sessionId, capabilities]
+            : [sessionId, capabilities];
+        method.Invoke(_sessions, args);
     }
 
     private static ClientCapabilities BuildCapabilities()
