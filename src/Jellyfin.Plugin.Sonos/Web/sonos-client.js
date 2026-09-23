@@ -192,8 +192,75 @@
         }
         if (_playbackManager) {
             installPlayGuard(_playbackManager);
+            installDisconnectStop(_playbackManager);
         }
         return _playbackManager || null;
+    }
+
+    function isLeavingSonosForLocal(playerArg) {
+        if (_transferBusy || !_activeCoordinatorId || !handoff()) {
+            return false;
+        }
+        if (!handoff().isSonosBoundPlayer(playerInfo(), _activeCoordinatorId)) {
+            return false;
+        }
+        if (playerArg == null || playerArg === 'localplayer') {
+            return true;
+        }
+        if (typeof playerArg === 'string' && playerArg.toLowerCase() === 'localplayer') {
+            return true;
+        }
+        if (typeof playerArg === 'object' && playerArg.name === 'localplayer') {
+            return true;
+        }
+        return false;
+    }
+
+    function stopActiveSonosAfterDisconnect(coordinatorId) {
+        if (!coordinatorId) {
+            return;
+        }
+        stopSonosCoordinator(coordinatorId).then(function () {
+            if (_activeCoordinatorId === coordinatorId) {
+                _activeCoordinatorId = null;
+            }
+            refreshActiveButtons();
+        });
+    }
+
+    function installDisconnectStop(pm) {
+        if (!pm || pm.__sonosDisconnectStop) {
+            return;
+        }
+        pm.__sonosDisconnectStop = true;
+
+        // Cast menu Disconnect → setDefaultPlayerActive → setActivePlayer('localplayer')
+        // without a Stop. Mirror Sonos-panel "Play locally" and stop the speaker.
+        if (typeof pm.setActivePlayer === 'function') {
+            var originalSet = pm.setActivePlayer.bind(pm);
+            pm.setActivePlayer = function (player, target) {
+                var coordinatorId = _activeCoordinatorId;
+                var leave = isLeavingSonosForLocal(player);
+                var result = originalSet(player, target);
+                if (leave) {
+                    stopActiveSonosAfterDisconnect(coordinatorId);
+                }
+                return result;
+            };
+        }
+
+        if (typeof pm.setDefaultPlayerActive === 'function') {
+            var originalDefault = pm.setDefaultPlayerActive.bind(pm);
+            pm.setDefaultPlayerActive = function () {
+                var coordinatorId = _activeCoordinatorId;
+                var leave = isLeavingSonosForLocal('localplayer');
+                var result = originalDefault();
+                if (leave) {
+                    stopActiveSonosAfterDisconnect(coordinatorId);
+                }
+                return result;
+            };
+        }
     }
 
     function installPlayGuard(pm) {
@@ -387,13 +454,18 @@
                 return info;
             }
         }
-        var btn = document.querySelector('.headerCastButton');
-        var active = btn && btn.classList.contains('castButton-active');
+        var btn = findCastButton();
+        var active = btn && (
+            btn.classList.contains('castButton-active')
+            || btn.getAttribute('aria-controls') === 'app-remote-play-active-menu'
+        );
         if (!active) {
             return { isLocalPlayer: true };
         }
         var nameEl = document.querySelector('.headerSelectedPlayer');
-        var name = nameEl && (nameEl.textContent || '').trim();
+        var name = (nameEl && (nameEl.textContent || '').trim())
+            || (btn.textContent || '').replace(/\s+/g, ' ').trim()
+            || null;
         return {
             isLocalPlayer: false,
             deviceName: name,
@@ -709,13 +781,37 @@
         return btn;
     }
 
+    function findCastButton() {
+        return document.querySelector('.headerCastButton')
+            || document.querySelector('button[aria-controls="app-remote-play-menu"]')
+            || document.querySelector('button[aria-controls="app-remote-play-active-menu"]')
+            || document.querySelector('button[aria-label="Cast"]')
+            || null;
+    }
+
     function insertHeaderButton() {
-        var cast = document.querySelector('.headerCastButton');
-        if (!cast || !cast.parentNode || document.querySelector('.headerSonosButton')) {
+        if (document.querySelector('.headerSonosButton')) {
             return;
         }
 
-        cast.parentNode.insertBefore(createSpeakerButton('headerButton headerSonosButton'), cast);
+        var cast = findCastButton();
+        if (!cast || !cast.parentNode) {
+            return;
+        }
+
+        // JF12 modern toolbar wraps the cast IconButton in a Tooltip span.
+        var anchor = cast.closest('.MuiTooltip-root') || cast;
+        var parent = anchor.parentNode;
+        if (!parent) {
+            return;
+        }
+
+        var btn = createSpeakerButton('headerButton headerSonosButton');
+        // Match MUI IconButton footprint next to RemotePlayButton.
+        btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;' +
+            'width:48px;height:48px;padding:8px;margin:0;border:0;background:transparent;' +
+            'color:inherit;cursor:pointer;border-radius:50%;flex-shrink:0;';
+        parent.insertBefore(btn, anchor);
         refreshActiveButtons();
     }
 
@@ -1030,7 +1126,7 @@
     }
 
     function clickCastMenu(deviceName) {
-        var btn = document.querySelector('.headerCastButton');
+        var btn = findCastButton();
         if (!btn) {
             return Promise.reject(new Error('Cast button not found'));
         }
@@ -1039,7 +1135,8 @@
         btn.click();
 
         return waitFor(function () {
-            var items = document.querySelectorAll('.actionSheetMenuItem, .listItem-button');
+            var items = document.querySelectorAll(
+                '.actionSheetMenuItem, .listItem-button, .MuiMenuItem-root, [role="menuitem"]');
             for (var i = 0; i < items.length; i++) {
                 var text = (items[i].textContent || '').replace(/\s+/g, ' ').trim();
                 if (!text) {
@@ -1497,6 +1594,61 @@
         });
     }
 
+    function syncRemoteProgressFromSonos() {
+        if (_transferBusy || !_activeCoordinatorId || !handoff()) {
+            return;
+        }
+        if (!handoff().isSonosBoundPlayer(playerInfo(), _activeCoordinatorId)) {
+            return;
+        }
+        var pm = playback();
+        var player = pm && typeof pm.getCurrentPlayer === 'function' ? pm.getCurrentPlayer() : null;
+        if (!player || player.isLocalPlayer) {
+            return;
+        }
+        fetchQueue(_activeCoordinatorId).then(function (queue) {
+            if (!queue) {
+                return;
+            }
+            var ticks = queue.positionTicks;
+            if (ticks == null) {
+                ticks = queue.PositionTicks;
+            }
+            if (ticks == null) {
+                ticks = 0;
+            }
+            var paused = queue.state === 'Paused' || queue.State === 'Paused';
+            if (!player.lastPlayerData) {
+                player.lastPlayerData = {};
+            }
+            if (typeof handoff().normalizeSessionState === 'function') {
+                handoff().normalizeSessionState(player.lastPlayerData);
+            }
+            if (!player.lastPlayerData.PlayState) {
+                player.lastPlayerData.PlayState = {};
+            }
+            player.lastPlayerData.PlayState.PositionTicks = ticks;
+            player.lastPlayerData.PlayState.IsPaused = !!paused;
+            player.lastPlayerData.PlayState.CanSeek = true;
+            if (typeof player._sonosGetCaptured === 'function') {
+                try {
+                    var cap = player._sonosGetCaptured();
+                    if (cap && typeof cap === 'object') {
+                        cap.ticks = ticks;
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+            if (typeof handoff().triggerPlayerEvent === 'function') {
+                handoff().triggerPlayerEvent(player, 'timeupdate', [player.lastPlayerData]);
+            }
+        }).catch(function () {
+            return undefined;
+        });
+    }
+
     window.setInterval(refreshActiveButtons, 2000);
+    window.setInterval(syncRemoteProgressFromSonos, 1000);
     restoreOnBoot();
 })();

@@ -23,6 +23,8 @@ public sealed class SessionPlaybackReporter
     private Guid _lastItemId;
     private string _lastQueueItemId = string.Empty;
     private PlaybackState _lastState = PlaybackState.Stopped;
+    private DateTimeOffset _stoppedSince = DateTimeOffset.MinValue;
+    private static readonly TimeSpan StopDebounce = TimeSpan.FromSeconds(4);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SessionPlaybackReporter"/> class.
@@ -57,6 +59,22 @@ public sealed class SessionPlaybackReporter
 
         if (queue.Items.Count == 0 || queue.State == PlaybackState.Stopped)
         {
+            // Cloud Queue reloads briefly report Idle/Stopped; debounce so we do not
+            // tear down NowPlayingItem / automatic progress and leave the bar at "--:--".
+            if (queue.Items.Count > 0
+                && _lastState is PlaybackState.Playing or PlaybackState.Paused or PlaybackState.Transitioning)
+            {
+                if (_stoppedSince == DateTimeOffset.MinValue)
+                {
+                    _stoppedSince = DateTimeOffset.UtcNow;
+                }
+
+                if (DateTimeOffset.UtcNow - _stoppedSince < StopDebounce)
+                {
+                    return;
+                }
+            }
+
             if (_lastState != PlaybackState.Stopped && _lastItemId != Guid.Empty)
             {
                 try
@@ -71,15 +89,18 @@ public sealed class SessionPlaybackReporter
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "Failed to report Sonos playback stop");
+                    _logger.LogWarning(ex, "Failed to report Sonos playback stop");
                 }
             }
 
             _lastState = PlaybackState.Stopped;
             _lastItemId = Guid.Empty;
             _lastQueueItemId = string.Empty;
+            _stoppedSince = DateTimeOffset.MinValue;
             return;
         }
+
+        _stoppedSince = DateTimeOffset.MinValue;
 
         var index = Math.Clamp(queue.CurrentIndex, 0, queue.Items.Count - 1);
         var current = queue.Items[index];
@@ -97,7 +118,7 @@ public sealed class SessionPlaybackReporter
                     SessionId = info.SessionId,
                     IsPaused = info.IsPaused,
                     IsMuted = info.IsMuted,
-                    PositionTicks = info.PositionTicks,
+                    PositionTicks = info.PositionTicks ?? 0,
                     VolumeLevel = info.VolumeLevel,
                     PlayMethod = info.PlayMethod,
                     RepeatMode = info.RepeatMode,
@@ -108,12 +129,14 @@ public sealed class SessionPlaybackReporter
             }
             else
             {
-                await _sessions.OnPlaybackProgress(info, false).ConfigureAwait(false);
+                // Automated so we update PlayState without resetting automatic progress
+                // from a possibly-stale Sonos poll of 0 every 2s.
+                await _sessions.OnPlaybackProgress(info, true).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to report Sonos playback to session {SessionId}", sessionId);
+            _logger.LogWarning(ex, "Failed to report Sonos playback to session {SessionId}", sessionId);
         }
 
         _lastItemId = current.ItemId;
@@ -137,7 +160,7 @@ public sealed class SessionPlaybackReporter
             SessionId = sessionId,
             IsPaused = queue.State == PlaybackState.Paused,
             IsMuted = queue.Muted,
-            PositionTicks = queue.PositionTicks,
+            PositionTicks = Math.Max(0, queue.PositionTicks),
             VolumeLevel = queue.Volume,
             PlayMethod = PlayMethod.DirectStream,
             RepeatMode = SessionCommandMapper.ToRepeatMode(queue.Repeat),

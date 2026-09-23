@@ -910,10 +910,51 @@
         return item;
     };
 
+    /**
+     * JF12 Sessions websocket payloads are camelCase. SessionPlayer / nowPlayingBar
+     * still read PascalCase (PlayState.PositionTicks). Without this, the bar shows
+     * artwork/title via our item patch but stuck "--:--" for position.
+     */
+    H.normalizeSessionState = function (state) {
+        if (!state || typeof state !== 'object') {
+            return state;
+        }
+        if (!state.NowPlayingItem && state.nowPlayingItem) {
+            state.NowPlayingItem = state.nowPlayingItem;
+        }
+        var playState = state.PlayState || state.playState;
+        if (playState && typeof playState === 'object') {
+            if (playState.PositionTicks == null && playState.positionTicks != null) {
+                playState.PositionTicks = playState.positionTicks;
+            }
+            if (playState.IsPaused == null && playState.isPaused != null) {
+                playState.IsPaused = playState.isPaused;
+            }
+            if (playState.IsMuted == null && playState.isMuted != null) {
+                playState.IsMuted = playState.isMuted;
+            }
+            if (playState.CanSeek == null && playState.canSeek != null) {
+                playState.CanSeek = playState.canSeek;
+            }
+            if (playState.VolumeLevel == null && playState.volumeLevel != null) {
+                playState.VolumeLevel = playState.volumeLevel;
+            }
+            if (playState.RepeatMode == null && playState.repeatMode != null) {
+                playState.RepeatMode = playState.repeatMode;
+            }
+            if (playState.PlaybackOrder == null && playState.playbackOrder != null) {
+                playState.PlaybackOrder = playState.playbackOrder;
+            }
+            state.PlayState = playState;
+        }
+        return state;
+    };
+
     H.patchNowPlayingState = function (state, captured, serverId) {
         if (!state || typeof state !== 'object') {
             return false;
         }
+        H.normalizeSessionState(state);
         var sessionItem = state.NowPlayingItem || state.nowPlayingItem;
         var merged = H.mergeNowPlayingItem(sessionItem, captured, serverId);
         if (!merged) {
@@ -926,6 +967,18 @@
             state.NowPlayingItem = sessionItem;
         } else {
             state.NowPlayingItem = merged;
+        }
+        // Keep a numeric PositionTicks so the bar never paints "--:--" when we
+        // know the track (captured ticks or 0).
+        if (!state.PlayState || typeof state.PlayState !== 'object') {
+            state.PlayState = {};
+        }
+        if (state.PlayState.PositionTicks == null) {
+            var ticks = captured && captured.ticks != null ? captured.ticks : 0;
+            state.PlayState.PositionTicks = ticks;
+        }
+        if (state.PlayState.CanSeek == null) {
+            state.PlayState.CanSeek = true;
         }
         return true;
     };
@@ -957,6 +1010,13 @@
                 var serverId = typeof player._sonosGetServerId === 'function'
                     ? player._sonosGetServerId()
                     : player._sonosGetServerId;
+                // Normalize the live Sessions payload first (camelCase → PascalCase).
+                if (state) {
+                    H.normalizeSessionState(state);
+                }
+                if (player.lastPlayerData) {
+                    H.normalizeSessionState(player.lastPlayerData);
+                }
                 H.patchNowPlayingState(state, captured, serverId);
                 if (player.lastPlayerData && player.lastPlayerData !== state) {
                     H.patchNowPlayingState(player.lastPlayerData, captured, serverId);
@@ -965,7 +1025,7 @@
                 // Must not break jellyfin-web Events.trigger / sessionPlayer.
             }
         }
-        ['playbackstart', 'statechange'].forEach(function (type) {
+        ['playbackstart', 'statechange', 'timeupdate'].forEach(function (type) {
             player._callbacks = player._callbacks || {};
             var list = player._callbacks[type] || [];
             player._callbacks[type] = [patch].concat(list);
@@ -1005,11 +1065,21 @@
             return false;
         }
         H.applyNowPlayingAliases(item);
+        var playState = state.PlayState || state.playState
+            || (player.lastPlayerData && (player.lastPlayerData.PlayState || player.lastPlayerData.playState))
+            || {};
+        if (playState.PositionTicks == null && playState.positionTicks != null) {
+            playState.PositionTicks = playState.positionTicks;
+        }
+        if (playState.PositionTicks == null) {
+            playState.PositionTicks = (captured && captured.ticks != null) ? captured.ticks : 0;
+        }
+        if (playState.CanSeek == null) {
+            playState.CanSeek = true;
+        }
         var payload = {
             NowPlayingItem: item,
-            PlayState: state.PlayState || state.playState
-                || (player.lastPlayerData && player.lastPlayerData.PlayState)
-                || {}
+            PlayState: playState
         };
         return H.triggerPlayerEvent(player, 'playbackstart', [payload])
             || H.triggerPlayerEvent(player, 'statechange', [payload]);

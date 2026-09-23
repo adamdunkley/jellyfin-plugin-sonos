@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Publish Jellyfin.Plugin.Sonos and write a catalog zip:
-#   artifacts/sonos_<version>.zip
-#   artifacts/sonos_<version>.zip.md5
+# Publish Jellyfin.Plugin.Sonos for both ABIs:
+#   artifacts/sonos_<version>_10.11.zip  (net9.0, targetAbi 10.11.0.0)
+#   artifacts/sonos_<version>_12.0.zip   (net10.0, targetAbi 12.0.0.0)
+#   plus .md5 checksums
 #
-# The zip contains Jellyfin.Plugin.Sonos.dll and meta.json.
+# Each zip contains Jellyfin.Plugin.Sonos.dll and meta.json.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -13,37 +14,46 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VERSION="$(grep -m1 '<Version>' "${PLUGIN_ROOT}/Directory.Build.props" | sed -E 's/.*<Version>([^<]+)<\/Version>.*/\1/')"
 PLUGIN_NAME="Sonos"
 SLUG="sonos"
-PUBLISH_DIR="${PLUGIN_ROOT}/artifacts/publish"
-STAGING_DIR="${PLUGIN_ROOT}/artifacts/staging"
-ZIP_NAME="${SLUG}_${VERSION}.zip"
-ZIP_PATH="${PLUGIN_ROOT}/artifacts/${ZIP_NAME}"
+PUBLISH_ROOT="${PLUGIN_ROOT}/artifacts/publish"
+STAGING_ROOT="${PLUGIN_ROOT}/artifacts/staging"
 
 if ! command -v dotnet >/dev/null 2>&1; then
-  echo "dotnet SDK is required. Install .NET 9: https://dotnet.microsoft.com/download/dotnet/9.0" >&2
+  echo "dotnet SDK is required. Install .NET 10: https://dotnet.microsoft.com/download/dotnet/10.0" >&2
   exit 1
 fi
 
-echo "Building ${PLUGIN_NAME} ${VERSION}..."
-dotnet publish "${PLUGIN_ROOT}/src/Jellyfin.Plugin.Sonos/Jellyfin.Plugin.Sonos.csproj" \
-  --configuration Release \
-  --output "${PUBLISH_DIR}" \
-  --nologo \
-  -p:UseAppHost=false
+package_one() {
+  local tfm="$1"
+  local abi="$2"
+  local abi_label="$3"
+  local framework="$tfm"
+  local publish_dir="${PUBLISH_ROOT}/${tfm}"
+  local staging_dir="${STAGING_ROOT}/${abi_label}"
+  local zip_name="${SLUG}_${VERSION}_${abi_label}.zip"
+  local zip_path="${PLUGIN_ROOT}/artifacts/${zip_name}"
 
-rm -rf "${STAGING_DIR}"
-mkdir -p "${STAGING_DIR}"
-cp "${PUBLISH_DIR}/Jellyfin.Plugin.Sonos.dll" "${STAGING_DIR}/"
+  echo "Building ${PLUGIN_NAME} ${VERSION} (${tfm}, targetAbi ${abi})..."
+  dotnet publish "${PLUGIN_ROOT}/src/Jellyfin.Plugin.Sonos/Jellyfin.Plugin.Sonos.csproj" \
+    --configuration Release \
+    --framework "${tfm}" \
+    --output "${publish_dir}" \
+    --nologo \
+    -p:UseAppHost=false
 
-cat > "${STAGING_DIR}/meta.json" <<EOF
+  rm -rf "${staging_dir}"
+  mkdir -p "${staging_dir}"
+  cp "${publish_dir}/Jellyfin.Plugin.Sonos.dll" "${staging_dir}/"
+
+  cat > "${staging_dir}/meta.json" <<EOF
 {
   "category": "Music",
-  "changelog": "Web UI: speaker button, Cast Play To sessions, grouping panel",
+  "changelog": "Dual-support Jellyfin 10.11 and 12.x; fix ReportCapabilities for JF12",
   "description": "Play Jellyfin music to Sonos S2 speakers using native queueing.",
   "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
   "name": "${PLUGIN_NAME}",
   "overview": "Play Jellyfin music to Sonos S2 speakers",
   "owner": "adamdunkley",
-  "targetAbi": "10.11.0.0",
+  "targetAbi": "${abi}",
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%S.0000000Z")",
   "version": "${VERSION}",
   "status": "Active",
@@ -52,8 +62,8 @@ cat > "${STAGING_DIR}/meta.json" <<EOF
 }
 EOF
 
-rm -f "${ZIP_PATH}" "${ZIP_PATH}.md5"
-python3 - "${STAGING_DIR}" "${ZIP_PATH}" <<'PY'
+  rm -f "${zip_path}" "${zip_path}.md5"
+  python3 - "${staging_dir}" "${zip_path}" <<'PY'
 import sys
 import zipfile
 from pathlib import Path
@@ -65,11 +75,15 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(path, path.name)
 PY
 
-if command -v md5sum >/dev/null 2>&1; then
-  (cd "${PLUGIN_ROOT}/artifacts" && md5sum "${ZIP_NAME}" > "${ZIP_NAME}.md5")
-else
-  md5 -r "${ZIP_PATH}" > "${ZIP_PATH}.md5"
-fi
+  if command -v md5sum >/dev/null 2>&1; then
+    (cd "${PLUGIN_ROOT}/artifacts" && md5sum "${zip_name}" > "${zip_name}.md5")
+  else
+    md5 -r "${zip_path}" > "${zip_path}.md5"
+  fi
 
-echo "Packaged ${ZIP_PATH}"
-echo "Checksum ${ZIP_PATH}.md5"
+  echo "Packaged ${zip_path}"
+  echo "Checksum ${zip_path}.md5"
+}
+
+package_one "net9.0" "10.11.0.0" "10.11"
+package_one "net10.0" "12.0.0.0" "12.0"

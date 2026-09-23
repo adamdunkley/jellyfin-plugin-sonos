@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>$(JellyfinTargetFramework)</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <RootNamespace>Jellyfin.Plugin.Sonos</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -15,11 +15,20 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion1011)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)">
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion1011)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion12)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion12)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
@@ -30,19 +39,19 @@
     <PackageReference Include="SmartAnalyzers.MultithreadingAnalyzer" Version="1.1.31" PrivateAssets="All" />
   </ItemGroup>
 
-    <ItemGroup>
-      <InternalsVisibleTo Include="Jellyfin.Plugin.Sonos.Tests" />
-    </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.Sonos.Tests" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <None Remove="Configuration\configPage.html" />
-      <None Remove="Web\sonos-client.js" />
-      <None Remove="Web\player-handoff.js" />
-      <None Remove="Web\sonos-client.css" />
-      <EmbeddedResource Include="Configuration\configPage.html" />
-      <EmbeddedResource Include="Web\sonos-client.js" />
-      <EmbeddedResource Include="Web\player-handoff.js" />
-      <EmbeddedResource Include="Web\sonos-client.css" />
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <None Remove="Web\sonos-client.js" />
+    <None Remove="Web\player-handoff.js" />
+    <None Remove="Web\sonos-client.css" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Web\sonos-client.js" />
+    <EmbeddedResource Include="Web\player-handoff.js" />
+    <EmbeddedResource Include="Web\sonos-client.css" />
   </ItemGroup>
 
 </Project>
