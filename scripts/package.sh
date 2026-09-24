@@ -52,7 +52,7 @@ package_one() {
   cat > "${staging_dir}/meta.json" <<EOF
 {
   "category": "Music",
-  "changelog": "Queue/Play verifies the speaker switched before setting pluginOwned; otherwise returns 502 TransportNotSwitched. QueueResponse adds transportMatched, speakerItemId/Uri, usesCloudQueue, and publishedBaseUrl. Clients must treat TransportNotSwitched as cast failure and should not trust queue metadata when transportMatched is false.",
+  "changelog": "Fixes Queue/Play failing when you press Play again on the same speaker, and when playback should resume after Stop or after grouping speakers. The plugin now reuses a healthy Sonos session instead of always creating a new one.",
   "description": "Play Jellyfin music to Sonos S2 speakers using native queueing.",
   "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
   "name": "${PLUGIN_NAME}",
