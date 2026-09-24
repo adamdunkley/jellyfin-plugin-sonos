@@ -150,6 +150,18 @@ public sealed class ApiContractTests
     }
 
     [Fact]
+    public void GroupCommandResult_ReportsNewCoordinatorAfterHandoff()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(
+            """{"group":{"id":"G2","coordinatorId":"RINCON_LIVING","playerIds":["RINCON_LIVING"]}}""");
+        var result = Jellyfin.Plugin.Sonos.Control.GroupCommandResult.FromLan(node, "RINCON_OFFICE", "G1");
+
+        Assert.Equal("RINCON_LIVING", result.CoordinatorId);
+        Assert.NotEqual("RINCON_OFFICE", result.CoordinatorId);
+        Assert.Equal(["RINCON_LIVING"], result.PlayerIds);
+    }
+
+    [Fact]
     public void PlayerRegistry_ApplyGroupMembership_BringsFollowers()
     {
         var registry = CreateRegistry();

@@ -135,6 +135,38 @@ public sealed class LogicalQueueTests
     }
 
     [Fact]
+    public void TryTransfer_RekeysQueueAndClearsOldCoordinator()
+    {
+        var store = new LogicalQueueStore();
+        var queue = store.Replace("RINCON_OFFICE", [Item("a")], 0, Guid.NewGuid());
+        queue.PositionTicks = 9_000_000;
+        queue.UsesCloudQueue = true;
+        queue.State = PlaybackState.Playing;
+        var version = queue.QueueVersion;
+
+        Assert.True(store.TryTransfer("RINCON_OFFICE", "RINCON_LIVING"));
+        Assert.False(store.TryGet("RINCON_OFFICE", out _));
+        Assert.True(store.TryGet("RINCON_LIVING", out var moved));
+        Assert.Same(queue, moved);
+        Assert.Equal("RINCON_LIVING", moved.CoordinatorId);
+        Assert.Equal(9_000_000, moved.PositionTicks);
+        Assert.NotEqual(version, moved.QueueVersion);
+        Assert.False(store.TryTransfer("RINCON_OFFICE", "RINCON_LIVING"));
+        Assert.False(store.TryTransfer("RINCON_LIVING", "RINCON_LIVING"));
+    }
+
+    [Fact]
+    public void TryWipe_RemovesStoreEntry()
+    {
+        var store = new LogicalQueueStore();
+        store.Replace("RINCON_A", [Item("a")], 0, Guid.NewGuid());
+        Assert.True(store.TryWipe("RINCON_A"));
+        Assert.False(store.TryGet("RINCON_A", out _));
+        Assert.False(store.TryWipe("RINCON_A"));
+        Assert.False(store.TryWipe(""));
+    }
+
+    [Fact]
     public void TrySyncCurrent_FollowsCloudQueueItemIdWithoutBumpingVersion()
     {
         var store = new LogicalQueueStore();

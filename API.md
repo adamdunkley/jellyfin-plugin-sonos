@@ -244,7 +244,9 @@ Adds or removes players on an existing group. `{id}` is a group id or any member
 }
 ```
 
-Same resume-after-grouping behavior as create.
+Same resume-after-grouping behavior as create when the Group Coordinator is unchanged.
+
+**Removing the Group Coordinator:** Sonos elects a new coordinator among remaining members. The plugin moves the Jellyfin logical queue to that new `coordinatorId`, reloads Cloud Queue there at the prior playhead, then stops and clears the removed coordinator’s plugin queue. Clients must retarget now-playing / Queue / Playstate to the new `coordinatorId` from the `GroupsResponse` (or a fresh `GET /Players`). Do not keep `targetId` on the removed room.
 
 **200** `GroupsResponse`
 

@@ -554,9 +554,11 @@ public sealed class SonosPlaybackService
         }
 
         await SnapshotPlaybackPositionAsync(coordinator, cancellationToken).ConfigureAwait(false);
+        var oldCoordinatorId = coordinator.Id;
+        GroupCommandResult result;
         try
         {
-            var result = await _control.ModifyGroupMembersAsync(
+            result = await _control.ModifyGroupMembersAsync(
                     coordinator,
                     coordinator.GroupId ?? groupId,
                     resolvedAdd,
@@ -578,8 +580,53 @@ public sealed class SonosPlaybackService
             return MapControlException(ex, coordinator);
         }
 
-        await ResumeQueueAfterGroupingAsync(coordinator, cancellationToken).ConfigureAwait(false);
+        var handedOff = !string.IsNullOrEmpty(result.CoordinatorId)
+            && !string.Equals(result.CoordinatorId, oldCoordinatorId, StringComparison.OrdinalIgnoreCase);
+        var removedOldCoordinator = remove.Any(id => string.Equals(id, oldCoordinatorId, StringComparison.OrdinalIgnoreCase));
+
+        if (handedOff)
+        {
+            var shouldResume = _queues.TryGet(oldCoordinatorId, out var prior)
+                && LogicalQueueStore.ShouldResumeAfterGrouping(prior);
+            _queues.TryTransfer(oldCoordinatorId, result.CoordinatorId);
+
+            if (shouldResume
+                && (_registry.TryGet(result.CoordinatorId, out var newCoordinator)
+                    || _registry.TryGetCoordinator(result.CoordinatorId, out newCoordinator)))
+            {
+                await ResumeQueueAfterGroupingAsync(newCoordinator, cancellationToken).ConfigureAwait(false);
+            }
+
+            await StopAndWipeCoordinatorAsync(oldCoordinatorId, cancellationToken).ConfigureAwait(false);
+        }
+        else if (removedOldCoordinator)
+        {
+            await StopAndWipeCoordinatorAsync(oldCoordinatorId, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await ResumeQueueAfterGroupingAsync(coordinator, cancellationToken).ConfigureAwait(false);
+        }
+
         return GroupsSnapshot();
+    }
+
+    private async Task StopAndWipeCoordinatorAsync(string coordinatorId, CancellationToken cancellationToken)
+    {
+        if (_registry.TryGet(coordinatorId, out var player)
+            || _registry.TryGetCoordinator(coordinatorId, out player))
+        {
+            try
+            {
+                await _control.StopAsync(player, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not stop previous coordinator {Player} after group handoff", coordinatorId);
+            }
+        }
+
+        _queues.TryWipe(coordinatorId);
     }
 
     /// <summary>Current groups from the registry.</summary>

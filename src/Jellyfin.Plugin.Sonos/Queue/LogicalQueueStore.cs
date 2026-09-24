@@ -33,6 +33,45 @@ public sealed class LogicalQueueStore
         => _queues.TryGetValue(coordinatorId, out queue!);
 
     /// <summary>
+    /// Moves a queue from one coordinator key to another (Sonos Group Coordinator handoff).
+    /// </summary>
+    /// <param name="fromCoordinatorId">Previous coordinator RINCON.</param>
+    /// <param name="toCoordinatorId">New coordinator RINCON.</param>
+    /// <returns>True when a queue was moved.</returns>
+    public bool TryTransfer(string fromCoordinatorId, string toCoordinatorId)
+    {
+        if (string.IsNullOrWhiteSpace(fromCoordinatorId)
+            || string.IsNullOrWhiteSpace(toCoordinatorId)
+            || string.Equals(fromCoordinatorId, toCoordinatorId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!_queues.TryRemove(fromCoordinatorId, out var queue))
+        {
+            return false;
+        }
+
+        _queues.TryRemove(toCoordinatorId, out _);
+        lock (queue)
+        {
+            queue.CoordinatorId = toCoordinatorId;
+            queue.BumpVersion();
+        }
+
+        _queues[toCoordinatorId] = queue;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes a coordinator queue from the store entirely.
+    /// </summary>
+    /// <param name="coordinatorId">Coordinator id.</param>
+    /// <returns>True when an entry was removed.</returns>
+    public bool TryWipe(string coordinatorId)
+        => !string.IsNullOrWhiteSpace(coordinatorId) && _queues.TryRemove(coordinatorId, out _);
+
+    /// <summary>
     /// Returns a snapshot of all coordinator queues.
     /// </summary>
     /// <returns>Queues currently in the store.</returns>
