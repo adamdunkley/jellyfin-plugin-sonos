@@ -52,7 +52,7 @@ package_one() {
   cat > "${staging_dir}/meta.json" <<EOF
 {
   "category": "Music",
-  "changelog": "Dual-support Jellyfin 10.11 and 12.x; fix ReportCapabilities for JF12",
+  "changelog": "Play after ungrouping a speaker works again. Grouping is more reliable when Sonos will not copy music context.",
   "description": "Play Jellyfin music to Sonos S2 speakers using native queueing.",
   "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
   "name": "${PLUGIN_NAME}",

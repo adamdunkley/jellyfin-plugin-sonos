@@ -1,7 +1,7 @@
 ---
 name: "Sonos"
 guid: "cef190c1-177d-4018-8271-7a3aa6033a3f"
-version: "0.1.2.0"
+version: "0.1.3.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Play Jellyfin music to Sonos S2 speakers"
@@ -13,4 +13,5 @@ owner: "adamdunkley"
 artifacts:
   - "Jellyfin.Plugin.Sonos.dll"
 changelog: >
-  Dual-support Jellyfin 10.11 and 12.x; fix ReportCapabilities for JF12
+  Play after ungrouping a speaker works again.
+  Grouping is more reliable when Sonos will not copy music context.
