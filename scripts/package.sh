@@ -52,7 +52,7 @@ package_one() {
   cat > "${staging_dir}/meta.json" <<EOF
 {
   "category": "Music",
-  "changelog": "Fixes Queue/Play failing when you press Play again on the same speaker, and when playback should resume after Stop or after grouping speakers. The plugin now reuses a healthy Sonos session instead of always creating a new one.",
+  "changelog": "Adds POST /Sonos/Queue/Clear for cast-back to local: stops the speaker, clears the Cloud Queue session (and residual Sonos-app source/artwork), and wipes the plugin queue so rooms show nothing queued.",
   "description": "Play Jellyfin music to Sonos S2 speakers using native queueing.",
   "guid": "cef190c1-177d-4018-8271-7a3aa6033a3f",
   "name": "${PLUGIN_NAME}",
