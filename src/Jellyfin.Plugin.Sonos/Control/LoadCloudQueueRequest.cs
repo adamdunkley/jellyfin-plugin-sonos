@@ -33,4 +33,10 @@ public sealed class LoadCloudQueueRequest
 
     /// <summary>Gets start offset within the first item, in milliseconds.</summary>
     public int PositionMillis { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether to force <c>createSession</c> instead of reusing a sticky LAN session.
+    /// Queue/Play sets this so a prior Cloud Queue (e.g. another Jellyfin) cannot keep the speaker.
+    /// </summary>
+    public bool ForceNewSession { get; init; }
 }

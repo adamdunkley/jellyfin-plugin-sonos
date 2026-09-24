@@ -69,12 +69,21 @@ public sealed class ApiContractTests
                 CoordinatorId = "RINCON_A",
                 State = PlaybackState.Playing,
                 UserId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                PluginOwned = true
+                PluginOwned = true,
+                UsesCloudQueue = true,
+                PublishedBaseUrl = "http://192.0.2.10:8096",
+                SpeakerItemId = "qi-1",
+                SpeakerUri = "http://192.0.2.10:8096/Sonos/stream/tok",
+                TransportMatched = true
             },
             JsonOptions);
 
         Assert.Contains("\"userId\":\"11111111-1111-1111-1111-111111111111\"", json, StringComparison.Ordinal);
         Assert.Contains("\"pluginOwned\":true", json, StringComparison.Ordinal);
+        Assert.Contains("\"usesCloudQueue\":true", json, StringComparison.Ordinal);
+        Assert.Contains("\"publishedBaseUrl\":\"http://192.0.2.10:8096\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"speakerItemId\":\"qi-1\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"transportMatched\":true", json, StringComparison.Ordinal);
     }
 
     private static PlayerRegistry CreateRegistry(params string[] ignoredIds)

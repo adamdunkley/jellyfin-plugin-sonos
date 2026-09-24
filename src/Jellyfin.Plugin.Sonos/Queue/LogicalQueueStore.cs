@@ -256,6 +256,7 @@ public sealed class LogicalQueueStore
 
     /// <summary>
     /// Applies a transport snapshot, including the current Cloud Queue row.
+    /// Clears <see cref="LogicalQueue.PluginOwned"/> when the speaker reports a foreign item/URI.
     /// </summary>
     /// <param name="queue">Queue.</param>
     /// <param name="state">Playback state.</param>
@@ -281,21 +282,62 @@ public sealed class LogicalQueueStore
             queue.PositionTicks = positionTicks;
             queue.Volume = volume;
             queue.Muted = muted;
+            queue.SpeakerItemId = itemId ?? string.Empty;
+            queue.SpeakerUri = currentUri ?? string.Empty;
             var changed = SyncCurrentUnlocked(queue, itemId, currentUri);
             queue.LastPoll = DateTimeOffset.UtcNow;
             return changed;
         }
     }
 
-    internal static bool SyncCurrentUnlocked(LogicalQueue queue, string? itemId, string? currentUri)
+    /// <summary>
+    /// True when the speaker identity matches the expected queue row (Cloud Queue item id or stream token in URI).
+    /// </summary>
+    /// <param name="expected">Expected current row.</param>
+    /// <param name="itemId">Speaker Cloud Queue item id.</param>
+    /// <param name="currentUri">Speaker TrackURI.</param>
+    /// <returns>True when matched.</returns>
+    public static bool MatchesExpected(LogicalQueueItem expected, string? itemId, string? currentUri)
     {
-        if (queue.Items.Count == 0)
+        ArgumentNullException.ThrowIfNull(expected);
+        if (!string.IsNullOrWhiteSpace(itemId)
+            && string.Equals(expected.QueueItemId, itemId, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(currentUri) || string.IsNullOrEmpty(expected.StreamToken))
         {
             return false;
         }
 
+        return currentUri.Contains(expected.StreamToken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool SyncCurrentUnlocked(LogicalQueue queue, string? itemId, string? currentUri)
+    {
+        if (queue.Items.Count == 0)
+        {
+            queue.TransportMatched = false;
+            return false;
+        }
+
         var index = IndexOfCurrent(queue, itemId, currentUri);
-        if (index < 0 || index == queue.CurrentIndex)
+        var hasIdentity = !string.IsNullOrWhiteSpace(itemId) || !string.IsNullOrWhiteSpace(currentUri);
+        if (index < 0)
+        {
+            queue.TransportMatched = false;
+            if (hasIdentity)
+            {
+                // Speaker is playing something that is not in our logical queue.
+                queue.PluginOwned = false;
+            }
+
+            return false;
+        }
+
+        queue.TransportMatched = true;
+        if (index == queue.CurrentIndex)
         {
             return false;
         }

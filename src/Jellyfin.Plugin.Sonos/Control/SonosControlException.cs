@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.Sonos.Control;
 
@@ -13,11 +14,17 @@ public sealed class SonosControlException : Exception
     /// <param name="errorCode">Stable error code.</param>
     /// <param name="message">Human-readable message.</param>
     /// <param name="httpStatus">Optional HTTP status from the player.</param>
-    public SonosControlException(string errorCode, string message, int? httpStatus = null)
+    /// <param name="details">Optional safe details for problem JSON.</param>
+    public SonosControlException(
+        string errorCode,
+        string message,
+        int? httpStatus = null,
+        IReadOnlyDictionary<string, object?>? details = null)
         : base(message)
     {
         ErrorCode = errorCode;
         HttpStatus = httpStatus;
+        Details = details;
     }
 
     /// <summary>Gets the stable error code.</summary>
@@ -25,6 +32,9 @@ public sealed class SonosControlException : Exception
 
     /// <summary>Gets the HTTP status when known.</summary>
     public int? HttpStatus { get; }
+
+    /// <summary>Gets optional safe details for problem JSON.</summary>
+    public IReadOnlyDictionary<string, object?>? Details { get; }
 
     /// <summary>
     /// Returns true when the speaker reports that this group has no usable Cloud Queue session.

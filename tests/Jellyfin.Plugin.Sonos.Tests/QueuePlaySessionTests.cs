@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Jellyfin.Plugin.Sonos;
 using Jellyfin.Plugin.Sonos.Api.Models;
 using Jellyfin.Plugin.Sonos.Control;
@@ -22,6 +23,7 @@ public sealed class QueuePlaySessionTests
         Assert.NotNull(load.TrackMetadata);
         Assert.Equal(0, load.PositionMillis);
         Assert.Equal("item-current", load.ItemId);
+        Assert.True(load.ForceNewSession);
     }
 
     [Fact]
@@ -33,6 +35,30 @@ public sealed class QueuePlaySessionTests
         Assert.NotNull(load.TrackMetadata);
         Assert.Equal(3600, load.PositionMillis);
         Assert.Contains("tok", load.TrackMetadata!["mediaUrl"]?.GetValue<string>(), StringComparison.Ordinal);
+        Assert.True(load.ForceNewSession);
+    }
+
+    [Fact]
+    public void MapControlException_TransportNotSwitched_IsBadGateway()
+    {
+        var coordinator = new DiscoveredPlayer { Id = "RINCON_LIVING", Name = "Living Room" };
+        var ex = new SonosControlException(
+            "TransportNotSwitched",
+            "Living Room did not switch",
+            details: new Dictionary<string, object?>
+            {
+                ["expectedItemId"] = "qi-feist",
+                ["speakerItemId"] = "qi-heads"
+            });
+
+        var result = SonosPlaybackService.MapControlException(ex, coordinator);
+        var body = Assert.IsType<ProblemError>(result.Value);
+
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("TransportNotSwitched", body.Error);
+        Assert.NotNull(body.Details);
+        Assert.Equal("qi-feist", body.Details!["expectedItemId"]?.ToString());
+        Assert.Equal("Living Room", body.Details["player"]?.ToString());
     }
 
     [Fact]

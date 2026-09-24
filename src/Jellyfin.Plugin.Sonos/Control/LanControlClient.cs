@@ -143,7 +143,13 @@ public sealed class LanControlClient : IAsyncDisposable
             player.Id,
             async () =>
             {
-                await EnsureSessionCoreAsync(player, appContext, forceCreate: false, cancellationToken).ConfigureAwait(false);
+                if (request.ForceNewSession)
+                {
+                    await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
+                    RequireConnection(player).InvalidateSession();
+                }
+
+                await EnsureSessionCoreAsync(player, appContext, forceCreate: request.ForceNewSession, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);

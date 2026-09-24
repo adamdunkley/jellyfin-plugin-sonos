@@ -46,6 +46,24 @@ public sealed class QueueResponse
     /// </summary>
     public bool PluginOwned { get; init; }
 
+    /// <summary>Gets a value indicating whether LAN Cloud Queue is loaded for this coordinator.</summary>
+    public bool UsesCloudQueue { get; init; }
+
+    /// <summary>Gets the validated PublishedBaseUrl used for stream and Cloud Queue URLs.</summary>
+    public string PublishedBaseUrl { get; init; } = string.Empty;
+
+    /// <summary>Gets the last Cloud Queue item id reported by the speaker, if any.</summary>
+    public string SpeakerItemId { get; init; } = string.Empty;
+
+    /// <summary>Gets the last TrackURI / stream URL reported by the speaker, if any.</summary>
+    public string SpeakerUri { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Gets a value indicating whether the last transport poll matched a row in <see cref="Items"/>.
+    /// When false while <see cref="PluginOwned"/> is also false, REST metadata may not match audible playback.
+    /// </summary>
+    public bool TransportMatched { get; init; }
+
     /// <summary>Gets queue items.</summary>
     public IReadOnlyList<QueueItemDto> Items { get; init; } = [];
 }

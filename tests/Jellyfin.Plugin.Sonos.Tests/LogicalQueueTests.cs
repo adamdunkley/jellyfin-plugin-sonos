@@ -208,6 +208,7 @@ public sealed class LogicalQueueTests
         var a = Item("a");
         var b = Item("b");
         var queue = store.Replace("RINCON_A", [a, b], 0, Guid.NewGuid());
+        queue.PluginOwned = true;
 
         var changed = LogicalQueueStore.ApplyTransport(
             queue,
@@ -223,6 +224,65 @@ public sealed class LogicalQueueTests
         Assert.Equal(PlaybackState.Playing, queue.State);
         Assert.Equal(9_000_000, queue.PositionTicks);
         Assert.Equal(12, queue.Volume);
+        Assert.True(queue.TransportMatched);
+        Assert.True(queue.PluginOwned);
+        Assert.Equal(b.QueueItemId, queue.SpeakerItemId);
+    }
+
+    [Fact]
+    public void ApplyTransport_ClearsPluginOwned_WhenSpeakerItemIsForeign()
+    {
+        var store = new LogicalQueueStore();
+        var queue = store.Replace("RINCON_A", [Item("Feist")], 0, Guid.NewGuid());
+        queue.PluginOwned = true;
+
+        var changed = LogicalQueueStore.ApplyTransport(
+            queue,
+            PlaybackState.Playing,
+            5_000_000,
+            20,
+            false,
+            "foreign-talking-heads-id",
+            "http://192.168.1.93:8096/jellyfin/Sonos/stream/oldtoken");
+
+        Assert.False(changed);
+        Assert.Equal(0, queue.CurrentIndex);
+        Assert.False(queue.TransportMatched);
+        Assert.False(queue.PluginOwned);
+        Assert.Equal("foreign-talking-heads-id", queue.SpeakerItemId);
+        Assert.Contains("oldtoken", queue.SpeakerUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ApplyTransport_LeavesOwnership_WhenSpeakerReportsNoIdentity()
+    {
+        var store = new LogicalQueueStore();
+        var queue = store.Replace("RINCON_A", [Item("a")], 0, Guid.NewGuid());
+        queue.PluginOwned = true;
+
+        LogicalQueueStore.ApplyTransport(queue, PlaybackState.Playing, 1, 5, false, null, null);
+
+        Assert.True(queue.PluginOwned);
+        Assert.False(queue.TransportMatched);
+    }
+
+    [Fact]
+    public void MatchesExpected_ByItemIdOrStreamToken()
+    {
+        var item = new LogicalQueueItem
+        {
+            Name = "track",
+            ItemId = Guid.NewGuid(),
+            QueueItemId = "qi-1",
+            StreamToken = "tok-abc"
+        };
+
+        Assert.True(LogicalQueueStore.MatchesExpected(item, "qi-1", null));
+        Assert.True(LogicalQueueStore.MatchesExpected(
+            item,
+            null,
+            "http://host/Sonos/stream/tok-abc?x=1"));
+        Assert.False(LogicalQueueStore.MatchesExpected(item, "other", "http://host/Sonos/stream/other"));
     }
 
     [Fact]
@@ -232,12 +292,21 @@ public sealed class LogicalQueueTests
         var store = new LogicalQueueStore();
         var queue = store.Replace("RINCON_A", [Item("Track One")], 0, user);
         queue.PluginOwned = true;
+        queue.UsesCloudQueue = true;
         queue.State = PlaybackState.Playing;
+        queue.SpeakerItemId = "qi";
+        queue.SpeakerUri = "http://192.0.2.10/Sonos/stream/t";
+        queue.TransportMatched = true;
 
-        var dto = SonosPlaybackService.ToResponse(queue);
+        var dto = SonosPlaybackService.ToResponse(queue, "http://192.0.2.10:8096");
 
         Assert.Equal(user, dto.UserId);
         Assert.True(dto.PluginOwned);
+        Assert.True(dto.UsesCloudQueue);
+        Assert.Equal("http://192.0.2.10:8096", dto.PublishedBaseUrl);
+        Assert.Equal("qi", dto.SpeakerItemId);
+        Assert.Equal("http://192.0.2.10/Sonos/stream/t", dto.SpeakerUri);
+        Assert.True(dto.TransportMatched);
         Assert.Equal("RINCON_A", dto.CoordinatorId);
         Assert.Single(dto.Items);
     }

@@ -135,6 +135,27 @@ public sealed class SoapAvTransportClient : ISonosControlClient
         };
     }
 
+    /// <summary>
+    /// Best-effort TrackURI from SOAP GetPositionInfo (used to enrich LAN transport polls).
+    /// </summary>
+    /// <param name="player">Player.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>TrackURI, or null when unavailable.</returns>
+    public async Task<string?> TryGetTrackUriAsync(DiscoveredPlayer player, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var posXml = await AvAsync(player, "GetPositionInfo", string.Empty, cancellationToken).ConfigureAwait(false);
+            var uri = ExtractTag(posXml, "TrackURI");
+            return string.IsNullOrWhiteSpace(uri) ? null : uri;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "SOAP GetPositionInfo unavailable for {Player}", player.Id);
+            return null;
+        }
+    }
+
     /// <inheritdoc />
     public Task LoadCloudQueueAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)
         => throw new SonosControlException("NotSupported", "SOAP client cannot loadCloudQueue");

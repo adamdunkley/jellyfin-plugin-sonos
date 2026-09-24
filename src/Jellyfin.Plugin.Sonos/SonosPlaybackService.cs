@@ -301,9 +301,10 @@ public sealed class SonosPlaybackService
 
         var queue = _queues.GetOrCreate(coordinator.Id);
         await RefreshTransportIfDueAsync(coordinator, queue, cancellationToken).ConfigureAwait(false);
+        TryPublishedBase(out var published, out _);
         lock (queue)
         {
-            return new OkObjectResult(ToResponse(queue));
+            return new OkObjectResult(ToResponse(queue, published));
         }
     }
 
@@ -959,22 +960,12 @@ public sealed class SonosPlaybackService
         }
 
         var mediaUrl = published + "/Sonos/stream/" + current.StreamToken;
-        var load = BuildLoadCloudQueueRequest(coordinator.Id, queue, current, published, startPositionTicks);
+        var load = BuildLoadCloudQueueRequest(coordinator.Id, queue, current, published, startPositionTicks, forceNewSession: true);
 
         try
         {
-            await _control.LoadCloudQueueAsync(coordinator, load, cancellationToken).ConfigureAwait(false);
-            lock (queue)
-            {
-                queue.UsesCloudQueue = true;
-                queue.PluginOwned = true;
-                queue.State = PlaybackState.Playing;
-            }
-
-            if (startPositionTicks > 0)
-            {
-                await SeekWhenReadyAsync(coordinator, current.QueueItemId, startPositionTicks, cancellationToken).ConfigureAwait(false);
-            }
+            await LoadCloudQueueVerifiedAsync(coordinator, queue, current, load, startPositionTicks, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (SonosControlException ex) when (ex.ErrorCode is "NotSupported" or "PlayerUnavailable" or "LanAuthRequired")
         {
@@ -993,11 +984,24 @@ public sealed class SonosPlaybackService
                 current.DurationTicks);
             await _control.SetAvTransportUriAsync(coordinator, mediaUrl, didl, cancellationToken).ConfigureAwait(false);
             await _control.PlayAsync(coordinator, cancellationToken).ConfigureAwait(false);
+            if (!await TryVerifyTransportSwitchedAsync(coordinator, queue, current, cancellationToken).ConfigureAwait(false))
+            {
+                lock (queue)
+                {
+                    queue.PluginOwned = false;
+                    queue.UsesCloudQueue = false;
+                    queue.TransportMatched = false;
+                }
+
+                throw TransportNotSwitched(coordinator, current, queue);
+            }
+
             lock (queue)
             {
                 queue.UsesCloudQueue = false;
                 queue.PluginOwned = true;
                 queue.State = PlaybackState.Playing;
+                queue.TransportMatched = true;
             }
 
             if (startPositionTicks > 0)
@@ -1007,6 +1011,140 @@ public sealed class SonosPlaybackService
         }
 
         queue.PositionTicks = startPositionTicks;
+    }
+
+    private async Task LoadCloudQueueVerifiedAsync(
+        DiscoveredPlayer coordinator,
+        LogicalQueue queue,
+        LogicalQueueItem current,
+        LoadCloudQueueRequest load,
+        long startPositionTicks,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (attempt > 0)
+            {
+                _control.InvalidateGroupCache(coordinator.Id);
+                _logger.LogWarning(
+                    "Transport did not switch to {Item} on {Player}; recreating Cloud Queue session and retrying load",
+                    current.Name,
+                    coordinator.Name);
+            }
+
+            var request = attempt == 0
+                ? load
+                : new LoadCloudQueueRequest
+                {
+                    QueueBaseUrl = load.QueueBaseUrl,
+                    ItemId = load.ItemId,
+                    QueueVersion = load.QueueVersion,
+                    FirstMediaUrl = load.FirstMediaUrl,
+                    FirstTrackName = load.FirstTrackName,
+                    HttpAuthorization = load.HttpAuthorization,
+                    TrackMetadata = load.TrackMetadata,
+                    Extra = load.Extra,
+                    PositionMillis = load.PositionMillis,
+                    ForceNewSession = true
+                };
+
+            await _control.LoadCloudQueueAsync(coordinator, request, cancellationToken).ConfigureAwait(false);
+            if (await TryVerifyTransportSwitchedAsync(coordinator, queue, current, cancellationToken).ConfigureAwait(false))
+            {
+                lock (queue)
+                {
+                    queue.UsesCloudQueue = true;
+                    queue.PluginOwned = true;
+                    queue.State = PlaybackState.Playing;
+                    queue.TransportMatched = true;
+                }
+
+                if (startPositionTicks > 0)
+                {
+                    await SeekWhenReadyAsync(coordinator, current.QueueItemId, startPositionTicks, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return;
+            }
+        }
+
+        lock (queue)
+        {
+            queue.PluginOwned = false;
+            queue.UsesCloudQueue = false;
+            queue.TransportMatched = false;
+        }
+
+        throw TransportNotSwitched(coordinator, current, queue);
+    }
+
+    private async Task<bool> TryVerifyTransportSwitchedAsync(
+        DiscoveredPlayer coordinator,
+        LogicalQueue queue,
+        LogicalQueueItem expected,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            await Task.Delay(400, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var snap = await _control.GetTransportAsync(coordinator, cancellationToken).ConfigureAwait(false);
+                LogicalQueueStore.ApplyTransport(
+                    queue,
+                    snap.State,
+                    snap.PositionTicks,
+                    snap.Volume,
+                    snap.Muted,
+                    snap.CurrentItemId,
+                    snap.CurrentUri);
+
+                if (LogicalQueueStore.MatchesExpected(expected, snap.CurrentItemId, snap.CurrentUri))
+                {
+                    return true;
+                }
+
+                _logger.LogDebug(
+                    "Waiting for transport switch on {Player}: expected item {ExpectedId}, speaker item {SpeakerId}, uriHost present={HasUri}",
+                    coordinator.Name,
+                    expected.QueueItemId,
+                    snap.CurrentItemId ?? "(none)",
+                    !string.IsNullOrEmpty(snap.CurrentUri));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Waiting for transport switch on {Player}", coordinator.Name);
+            }
+        }
+
+        return false;
+    }
+
+    private static SonosControlException TransportNotSwitched(
+        DiscoveredPlayer coordinator,
+        LogicalQueueItem expected,
+        LogicalQueue queue)
+    {
+        return new SonosControlException(
+            "TransportNotSwitched",
+            coordinator.Name + " did not switch to \"" + expected.Name + "\" after load (speaker still on foreign content)",
+            details: new Dictionary<string, object?>
+            {
+                ["expectedItemId"] = expected.QueueItemId,
+                ["speakerItemId"] = queue.SpeakerItemId,
+                ["speakerUri"] = TruncateUri(queue.SpeakerUri)
+            });
+    }
+
+    private static string TruncateUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri) || uri.Length <= 160)
+        {
+            return uri;
+        }
+
+        return uri[..160] + "…";
     }
 
     private async Task SeekWhenReadyAsync(
@@ -1193,13 +1331,15 @@ public sealed class SonosPlaybackService
     /// <param name="current">Item to start on.</param>
     /// <param name="published">Published base URL.</param>
     /// <param name="startPositionTicks">Resume offset into the item.</param>
+    /// <param name="forceNewSession">True to force createSession (Queue/Play).</param>
     /// <returns>The load request.</returns>
     internal static LoadCloudQueueRequest BuildLoadCloudQueueRequest(
         string coordinatorId,
         LogicalQueue queue,
         LogicalQueueItem current,
         string published,
-        long startPositionTicks)
+        long startPositionTicks,
+        bool forceNewSession = true)
     {
         var positionMillis = startPositionTicks > 0
             ? (int)Math.Min(startPositionTicks / TimeSpan.TicksPerMillisecond, int.MaxValue)
@@ -1211,6 +1351,7 @@ public sealed class SonosPlaybackService
             QueueVersion = queue.QueueVersion,
             TrackMetadata = CloudQueueJson.Track(published, current),
             PositionMillis = positionMillis,
+            ForceNewSession = forceNewSession,
             Extra = new Dictionary<string, string> { ["appContext"] = queue.UserId.ToString("N") }
         };
     }
@@ -1225,9 +1366,9 @@ public sealed class SonosPlaybackService
     {
         if (ex.IsMissingPlaybackSession())
         {
-            var missingDetails = ex.HttpStatus is int missingHttp
-                ? new Dictionary<string, object?> { ["httpStatus"] = missingHttp, ["player"] = coordinator.Name }
-                : new Dictionary<string, object?> { ["player"] = coordinator.Name };
+            var missingDetails = MergeDetails(
+                ex,
+                new Dictionary<string, object?> { ["player"] = coordinator.Name });
             return ProblemResults.Create(
                 StatusCodes.Status409Conflict,
                 "PlayerUnavailable",
@@ -1240,15 +1381,38 @@ public sealed class SonosPlaybackService
             "LanAuthRequired" => StatusCodes.Status403Forbidden,
             "PlayerUnavailable" => StatusCodes.Status409Conflict,
             "ERROR_CLOUD_QUEUE_SERVICE_ERROR" => StatusCodes.Status502BadGateway,
+            "TransportNotSwitched" => StatusCodes.Status502BadGateway,
             _ => StatusCodes.Status409Conflict
         };
-        var details = ex.HttpStatus is int http
-            ? new Dictionary<string, object?> { ["httpStatus"] = http, ["player"] = coordinator.Name }
-            : new Dictionary<string, object?> { ["player"] = coordinator.Name };
+        var details = MergeDetails(
+            ex,
+            new Dictionary<string, object?> { ["player"] = coordinator.Name });
         return ProblemResults.Create(status, ex.ErrorCode, ex.Message, details);
     }
 
-    internal static QueueResponse ToResponse(LogicalQueue queue)
+    private static Dictionary<string, object?> MergeDetails(
+        SonosControlException ex,
+        Dictionary<string, object?> baseDetails)
+    {
+        if (ex.HttpStatus is int http)
+        {
+            baseDetails["httpStatus"] = http;
+        }
+
+        if (ex.Details is null)
+        {
+            return baseDetails;
+        }
+
+        foreach (var pair in ex.Details)
+        {
+            baseDetails[pair.Key] = pair.Value;
+        }
+
+        return baseDetails;
+    }
+
+    internal static QueueResponse ToResponse(LogicalQueue queue, string? publishedBaseUrl = null)
     {
         return new QueueResponse
         {
@@ -1264,6 +1428,11 @@ public sealed class SonosPlaybackService
             QueueVersion = queue.QueueVersion,
             UserId = queue.UserId,
             PluginOwned = queue.PluginOwned,
+            UsesCloudQueue = queue.UsesCloudQueue,
+            PublishedBaseUrl = publishedBaseUrl ?? string.Empty,
+            SpeakerItemId = queue.SpeakerItemId,
+            SpeakerUri = queue.SpeakerUri,
+            TransportMatched = queue.TransportMatched,
             Items = queue.Items.Select(i => new QueueItemDto
             {
                 QueueItemId = i.QueueItemId,

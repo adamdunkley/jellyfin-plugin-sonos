@@ -73,8 +73,37 @@ public sealed class CompositeSonosControlClient : ISonosControlClient
         => PreferLanAsync(player, () => _lan.GetVolumeAsync(player, cancellationToken), () => _soap.GetVolumeAsync(player, cancellationToken));
 
     /// <inheritdoc />
-    public Task<TransportSnapshot> GetTransportAsync(DiscoveredPlayer player, CancellationToken cancellationToken)
-        => PreferLanAsync(player, () => _lan.GetTransportAsync(player, cancellationToken), () => _soap.GetTransportAsync(player, cancellationToken));
+    public async Task<TransportSnapshot> GetTransportAsync(DiscoveredPlayer player, CancellationToken cancellationToken)
+    {
+        if (_lan.HasSession(player.Id))
+        {
+            try
+            {
+                var lan = await _lan.GetTransportAsync(player, cancellationToken).ConfigureAwait(false);
+                var trackUri = await _soap.TryGetTrackUriAsync(player, cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(trackUri) || string.Equals(lan.CurrentUri, trackUri, StringComparison.Ordinal))
+                {
+                    return lan;
+                }
+
+                return new TransportSnapshot
+                {
+                    State = lan.State,
+                    PositionTicks = lan.PositionTicks,
+                    Volume = lan.Volume,
+                    Muted = lan.Muted,
+                    CurrentItemId = lan.CurrentItemId,
+                    CurrentUri = trackUri
+                };
+            }
+            catch (Exception ex) when (ex is not SonosControlException { ErrorCode: "LanAuthRequired" })
+            {
+                _logger.LogDebug(ex, "LAN Control command failed; falling back to SOAP for {Player}", player.Id);
+            }
+        }
+
+        return await _soap.GetTransportAsync(player, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public Task LoadCloudQueueAsync(DiscoveredPlayer player, LoadCloudQueueRequest request, CancellationToken cancellationToken)

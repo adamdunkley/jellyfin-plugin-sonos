@@ -277,6 +277,11 @@ Returned by Play, Add, Remove, Move, Get Queue, and Playstate.
   "queueVersion": "1710000000000",
   "userId": "11111111-1111-1111-1111-111111111111",
   "pluginOwned": true,
+  "usesCloudQueue": true,
+  "publishedBaseUrl": "http://192.0.2.10:8096",
+  "speakerItemId": "a1b2c3d4e5f64789a0b1c2d3e4f50617",
+  "speakerUri": "http://192.0.2.10:8096/Sonos/stream/…",
+  "transportMatched": true,
   "items": [
     {
       "queueItemId": "a1b2c3d4e5f64789a0b1c2d3e4f50617",
@@ -305,7 +310,12 @@ Returned by Play, Add, Remove, Move, Get Queue, and Playstate.
 | `currentIndex` | int | Index into `items`. |
 | `queueVersion` | string | Bumped on every queue rewrite. Speakers poll this via Cloud Queue. |
 | `userId` | GUID | Jellyfin user who started this queue (token mint / library access). |
-| `pluginOwned` | bool | `true` after a successful load (Cloud Queue or SOAP). `false` after `Stop`. The speaker may still be playing non-Jellyfin content when `false`. |
+| `pluginOwned` | bool | `true` only after a successful load **and** transport verify that the speaker switched to our item. Cleared on `Stop`, or when a transport poll reports a foreign `itemId`/`URI`. |
+| `usesCloudQueue` | bool | `true` when the last successful start used LAN Cloud Queue (not SOAP SetAV). |
+| `publishedBaseUrl` | string | Validated `PublishedBaseUrl` used for stream and Cloud Queue URLs (empty when unset/invalid). |
+| `speakerItemId` | string | Last Cloud Queue item id from the speaker (may be empty). |
+| `speakerUri` | string | Last TrackURI / stream URL from the speaker (may be empty). |
+| `transportMatched` | bool | `true` when the last transport poll matched a row in `items`. When `false`, do not trust `items[currentIndex]` as audible now-playing. |
 | `items` | array | Logical queue. |
 
 **`items[]`**
@@ -348,7 +358,7 @@ Replaces the logical queue and starts playback on the target’s coordinator.
 }
 ```
 
-Loads native Cloud Queue when the speaker supports it. Falls back to SOAP `SetAVTransportURI` of `/Sonos/stream/{token}` when LAN Cloud Queue is unavailable (`NotSupported`, `PlayerUnavailable`, or `LanAuthRequired` on load — those codes are swallowed for the load path and SOAP is used instead; they still surface for other commands).
+Loads native Cloud Queue when the speaker supports it (always forces a new LAN `createSession` so a sticky session from another app/server cannot keep the speaker). After load (or SOAP SetAV fallback), the plugin polls transport until the speaker's Cloud Queue `itemId` or stream token matches the requested row; only then is `pluginOwned` set. Falls back to SOAP `SetAVTransportURI` of `/Sonos/stream/{token}` when LAN Cloud Queue is unavailable (`NotSupported`, `PlayerUnavailable`, or `LanAuthRequired` on load — those codes are swallowed for the load path and SOAP is used instead; they still surface for other commands).
 
 **200** `QueueResponse`
 
@@ -358,7 +368,9 @@ Loads native Cloud Queue when the speaker supports it. Falls back to SOAP `SetAV
 | 403 | `PluginDisabled`, `LanAuthRequired` |
 | 404 | `PlayerNotFound`, `ItemNotFound` |
 | 409 | `PlayerUnavailable` and other control errors |
-| 502 | `ERROR_CLOUD_QUEUE_SERVICE_ERROR` |
+| 502 | `ERROR_CLOUD_QUEUE_SERVICE_ERROR`, `TransportNotSwitched` |
+
+`TransportNotSwitched` means `loadCloudQueue` / SetAV returned OK but the coordinator kept playing foreign content (details may include `expectedItemId`, `speakerItemId`, `speakerUri`). Do not bind now-playing UI to the logical queue in that case.
 
 ### `POST /Sonos/Queue/Add`
 

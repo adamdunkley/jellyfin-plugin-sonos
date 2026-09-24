@@ -59,9 +59,21 @@ public sealed class LogicalQueue
 
     /// <summary>
     /// Gets or sets a value indicating whether this plugin currently owns the speaker transport.
-    /// True after a successful load (Cloud Queue or SOAP). False after Stop.
+    /// True after a successful load (Cloud Queue or SOAP) that verified the speaker switched.
+    /// False after Stop, or when transport reports a foreign item/URI.
     /// </summary>
     public bool PluginOwned { get; set; }
+
+    /// <summary>Gets or sets the last Cloud Queue item id reported by the speaker.</summary>
+    public string SpeakerItemId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the last TrackURI / stream URL reported by the speaker.</summary>
+    public string SpeakerUri { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the last transport poll matched a row in this queue.
+    /// </summary>
+    public bool TransportMatched { get; set; }
 
     /// <summary>Bumps queueVersion.</summary>
     public void BumpVersion()

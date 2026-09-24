@@ -121,6 +121,11 @@
                 muted: false,
                 userId: '',
                 pluginOwned: false,
+                usesCloudQueue: false,
+                publishedBaseUrl: '',
+                speakerItemId: '',
+                speakerUri: '',
+                transportMatched: false,
                 items: []
             };
         }
@@ -135,6 +140,11 @@
             muted: !!pick(data, 'muted', 'Muted'),
             userId: pick(data, 'userId', 'UserId') || '',
             pluginOwned: pick(data, 'pluginOwned', 'PluginOwned') === true,
+            usesCloudQueue: pick(data, 'usesCloudQueue', 'UsesCloudQueue') === true,
+            publishedBaseUrl: pick(data, 'publishedBaseUrl', 'PublishedBaseUrl') || '',
+            speakerItemId: pick(data, 'speakerItemId', 'SpeakerItemId') || '',
+            speakerUri: pick(data, 'speakerUri', 'SpeakerUri') || '',
+            transportMatched: pick(data, 'transportMatched', 'TransportMatched') === true,
             items: Array.isArray(rawItems) ? rawItems.map(normalizeQueueItem) : []
         };
     }
