@@ -426,6 +426,7 @@ public sealed class SonosPlaybackService
         {
             GroupCommandResult result;
             var existingGroup = coordinator.GroupId;
+            var musicContextGroupId = MusicContextGroupIdFor(coordinator);
             var toAdd = ordered.Where(id => !string.Equals(id, coordinator.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (!string.IsNullOrEmpty(existingGroup) && toAdd.Length > 0)
             {
@@ -436,13 +437,21 @@ public sealed class SonosPlaybackService
                 }
                 catch (SonosControlException)
                 {
-                    result = await _control.CreateGroupAsync(coordinator, ordered, existingGroup, cancellationToken)
+                    result = await CreateGroupPreferringMusicContextAsync(
+                            coordinator,
+                            ordered,
+                            musicContextGroupId,
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
             else
             {
-                result = await _control.CreateGroupAsync(coordinator, ordered, existingGroup, cancellationToken)
+                result = await CreateGroupPreferringMusicContextAsync(
+                        coordinator,
+                        ordered,
+                        musicContextGroupId,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -466,6 +475,42 @@ public sealed class SonosPlaybackService
 
         await ResumeQueueAfterGroupingAsync(coordinator, cancellationToken).ConfigureAwait(false);
         return GroupsSnapshot();
+    }
+
+    /// <summary>
+    /// Group id to pass as Sonos <c>musicContextGroupId</c>, or null when the coordinator has nothing copyable.
+    /// </summary>
+    private string? MusicContextGroupIdFor(DiscoveredPlayer coordinator)
+    {
+        if (string.IsNullOrEmpty(coordinator.GroupId)
+            || !_queues.TryGet(coordinator.Id, out var queue)
+            || !LogicalQueueStore.ShouldResumeAfterGrouping(queue))
+        {
+            return null;
+        }
+
+        return coordinator.GroupId;
+    }
+
+    private async Task<GroupCommandResult> CreateGroupPreferringMusicContextAsync(
+        DiscoveredPlayer coordinator,
+        IReadOnlyList<string> ordered,
+        string? musicContextGroupId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _control.CreateGroupAsync(coordinator, ordered, musicContextGroupId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (SonosControlException ex) when (ex.IsMusicContextCopyFailure() && !string.IsNullOrEmpty(musicContextGroupId))
+        {
+            _logger.LogInformation(
+                "Sonos rejected musicContextGroupId for {Player} ({Message}); creating group without music context",
+                coordinator.Name,
+                ex.Message);
+            return await _control.CreateGroupAsync(coordinator, ordered, null, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

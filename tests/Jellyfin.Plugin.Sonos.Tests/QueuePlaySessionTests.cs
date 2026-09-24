@@ -81,6 +81,19 @@ public sealed class QueuePlaySessionTests
         Assert.Equal(expected, ex.IsMissingPlaybackSession());
     }
 
+    [Theory]
+    [InlineData("ERROR_PLAYBACK_FAILED", "musicContextGroupId music context content cannot be copied", true)]
+    [InlineData("ERROR_PLAYBACK_FAILED", "Music context cannot be copied", true)]
+    [InlineData("CommandFailed", "music context content cannot be copied", true)]
+    [InlineData("ERROR_PLAYBACK_FAILED", "unrelated playback failure", false)]
+    [InlineData("PlayerUnavailable", "music context content cannot be copied", true)]
+    public void IsMusicContextCopyFailure_DetectsUncopyableContext(string errorCode, string message, bool expected)
+    {
+        var ex = new SonosControlException(errorCode, message);
+
+        Assert.Equal(expected, ex.IsMusicContextCopyFailure());
+    }
+
     private static LoadCloudQueueRequest BuildLoad(long startPositionTicks)
     {
         var current = new LogicalQueueItem

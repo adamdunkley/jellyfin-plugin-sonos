@@ -48,4 +48,22 @@ public sealed class SonosControlException : Exception
                 || string.Equals(ErrorCode, "playbackError", StringComparison.OrdinalIgnoreCase))
                && message.Contains("no session", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// True when Sonos rejected <c>createGroup</c> because <c>musicContextGroupId</c> could not be copied.
+    /// Callers should retry without a music context and reload Cloud Queue afterwards.
+    /// </summary>
+    /// <returns>True when a createGroup-without-context retry is appropriate.</returns>
+    public bool IsMusicContextCopyFailure()
+    {
+        var message = Message ?? string.Empty;
+        if (!message.Contains("music context", StringComparison.OrdinalIgnoreCase)
+            && !message.Contains("musicContext", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return message.Contains("cannot be copied", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(ErrorCode, "ERROR_PLAYBACK_FAILED", StringComparison.OrdinalIgnoreCase);
+    }
 }
