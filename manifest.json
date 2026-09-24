@@ -8,6 +8,14 @@
     "owner": "adamdunkley",
     "versions": [
       {
+        "changelog": "* Removing the group’s primary speaker keeps music playing on the rest.\r\n* After that, retarget to the new `coordinatorId` from the Groups response.\r\n\r\nThis may require some updates to clients to support properly (as they previously had a stable coordinatorId as it wasn't being dealt with properly) \r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.3.0...v0.1.4.0",
+        "checksum": "e721923ff43c757fe40b11f783d07de2",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.4.0/sonos_0.1.4.0_12.0.zip",
+        "targetAbi": "12.0.0.0",
+        "timestamp": "2026-09-24T07:04:13Z",
+        "version": "0.1.4.0"
+      },
+      {
         "changelog": "* Play after ungrouping a speaker works again (stale group id).\r\n* Grouping is more reliable when Sonos won’t copy the old group’s music context.\r\n\r\nNo API or config changes.\r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.2.0...v0.1.3.0",
         "checksum": "11f87f05c4236aac9cc23f2470efa50f",
         "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.3.0/sonos_0.1.3.0_12.0.zip",
