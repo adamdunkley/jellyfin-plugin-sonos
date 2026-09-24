@@ -8,6 +8,14 @@
     "owner": "adamdunkley",
     "versions": [
       {
+        "changelog": "Quick fixes for Queue/Play failing when you press Play again on the same speaker, and when playback should resume after Stop or after grouping speakers. The plugin now reuses a healthy Sonos session instead of always creating a new one.",
+        "checksum": "c12956d705ff24e0033a2599f5112d75",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.5.1/sonos_0.1.5.1_12.0.zip",
+        "targetAbi": "12.0.0.0",
+        "timestamp": "2026-09-24T08:59:53Z",
+        "version": "0.1.5.1"
+      },
+      {
         "changelog": "### Fixes\r\n- **Queue/Play** no longer reports `pluginOwned: true` / Playing when the speaker did not actually switch tracks (e.g. sticky Cloud Queue or prior Jellyfin stream).\r\n- Forces a fresh Cloud Queue session on Play, verifies transport matches the requested item, and clears sticky ownership when polls see foreign content.\r\n\r\n### API\r\n- **`502 TransportNotSwitched`** — Play/load succeeded on the wire but the coordinator kept foreign audio. Details may include `expectedItemId`, `speakerItemId`, `speakerUri`.\r\n- **`QueueResponse`** adds:\r\n  - `transportMatched`\r\n  - `speakerItemId` / `speakerUri`\r\n  - `usesCloudQueue`\r\n  - `publishedBaseUrl`\r\n \r\n### Client notes\r\n- Treat **`TransportNotSwitched`** as cast failure — do not bind Now Playing to the logical queue.\r\n- On queue polls, trust metadata only when **`transportMatched` is true** (typically with `pluginOwned`).\r\n- Optional: log `speakerUri` / `speakerItemId` for diagnostics; retry Play once or fall back to local playback if it keeps failing.\r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.4.0...v0.1.5.0",
         "checksum": "e6379f8b979d238cee619935941d7d93",
         "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.5.0/sonos_0.1.5.0_12.0.zip",
