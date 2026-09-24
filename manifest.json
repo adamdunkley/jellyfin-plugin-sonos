@@ -8,6 +8,14 @@
     "owner": "adamdunkley",
     "versions": [
       {
+        "changelog": "* Play after ungrouping a speaker works again (stale group id).\r\n* Grouping is more reliable when Sonos won’t copy the old group’s music context.\r\n\r\nNo API or config changes.\r\n\r\n**Full Changelog**: https://github.com/adamdunkley/jellyfin-plugin-sonos/compare/v0.1.2.0...v0.1.3.0",
+        "checksum": "11f87f05c4236aac9cc23f2470efa50f",
+        "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.3.0/sonos_0.1.3.0_12.0.zip",
+        "targetAbi": "12.0.0.0",
+        "timestamp": "2026-09-24T05:08:03Z",
+        "version": "0.1.3.0"
+      },
+      {
         "changelog": "Fixes to support Jellyfin 12.x",
         "checksum": "a035f4064acd473a1f3d7adbf800b27a",
         "sourceUrl": "https://github.com/adamdunkley/jellyfin-plugin-sonos/releases/download/v0.1.2.0/sonos_0.1.2.0_12.0.zip",
