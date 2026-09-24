@@ -35,8 +35,9 @@ public sealed class LoadCloudQueueRequest
     public int PositionMillis { get; init; }
 
     /// <summary>
-    /// Gets a value indicating whether to force <c>createSession</c> instead of reusing a sticky LAN session.
-    /// Queue/Play sets this so a prior Cloud Queue (e.g. another Jellyfin) cannot keep the speaker.
+    /// Gets a value indicating whether to force <c>createSession</c> (which terminates any existing
+    /// session on the group) before load — takeover / unmatched transport / verify retry.
+    /// Ordinary re-Play reuses the session.
     /// </summary>
     public bool ForceNewSession { get; init; }
 }

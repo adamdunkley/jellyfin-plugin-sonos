@@ -54,6 +54,13 @@ public sealed class SonosControlException : Exception
             return true;
         }
 
+        // Firmware returns this when loadCloudQueue is called with an empty/stale sessionId.
+        if (string.Equals(ErrorCode, "ERROR_MISSING_PARAMETERS", StringComparison.OrdinalIgnoreCase)
+            && message.Contains("sessionId", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         return (string.Equals(ErrorCode, "sessionError", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(ErrorCode, "playbackError", StringComparison.OrdinalIgnoreCase))
                && message.Contains("no session", StringComparison.OrdinalIgnoreCase);

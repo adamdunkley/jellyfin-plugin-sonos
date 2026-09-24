@@ -358,7 +358,7 @@ Replaces the logical queue and starts playback on the target’s coordinator.
 }
 ```
 
-Loads native Cloud Queue when the speaker supports it (always forces a new LAN `createSession` so a sticky session from another app/server cannot keep the speaker). After load (or SOAP SetAV fallback), the plugin polls transport until the speaker's Cloud Queue `itemId` or stream token matches the requested row; only then is `pluginOwned` set. Falls back to SOAP `SetAVTransportURI` of `/Sonos/stream/{token}` when LAN Cloud Queue is unavailable (`NotSupported`, `PlayerUnavailable`, or `LanAuthRequired` on load — those codes are swallowed for the load path and SOAP is used instead; they still surface for other commands).
+Loads native Cloud Queue when the speaker supports it. Reuses the LAN playback session when `pluginOwned` and `transportMatched` are already true; forces `createSession` (which terminates any existing session on the group) for split-brain takeover (`pluginOwned && !transportMatched`), after grouping resume, or when transport verify fails on the first load attempt. After load (or SOAP SetAV fallback), the plugin polls transport until the speaker's Cloud Queue `itemId` or stream token matches the requested row; only then is `pluginOwned` set. Falls back to SOAP `SetAVTransportURI` of `/Sonos/stream/{token}` when LAN Cloud Queue is unavailable (`NotSupported`, `PlayerUnavailable`, or `LanAuthRequired` on load — those codes are swallowed for the load path and SOAP is used instead; they still surface for other commands).
 
 **200** `QueueResponse`
 

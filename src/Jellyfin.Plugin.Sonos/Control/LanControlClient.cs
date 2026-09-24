@@ -143,29 +143,42 @@ public sealed class LanControlClient : IAsyncDisposable
             player.Id,
             async () =>
             {
-                if (request.ForceNewSession)
-                {
-                    await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
-                    RequireConnection(player).InvalidateSession();
-                }
-
-                await EnsureSessionCoreAsync(player, appContext, forceCreate: request.ForceNewSession, cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);
+                    await PrepareAndLoadCloudQueueAsync(player, request, appContext, forceCreate: request.ForceNewSession, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 catch (SonosControlException ex) when (ex.IsMissingPlaybackSession())
                 {
-                    var conn = RequireConnection(player);
-                    conn.InvalidateSession();
                     _logger.LogInformation(
                         "Cloud Queue session missing on {Player}; creating a new session and retrying load",
                         player.Name);
-                    await EnsureSessionCoreAsync(player, appContext, forceCreate: true, cancellationToken).ConfigureAwait(false);
-                    await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);
+                    await PrepareAndLoadCloudQueueAsync(player, request, appContext, forceCreate: true, cancellationToken)
+                        .ConfigureAwait(false);
                 }
             },
             cancellationToken);
+    }
+
+    private async Task PrepareAndLoadCloudQueueAsync(
+        DiscoveredPlayer player,
+        LoadCloudQueueRequest request,
+        string appContext,
+        bool forceCreate,
+        CancellationToken cancellationToken)
+    {
+        if (forceCreate)
+        {
+            await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
+            var conn = RequireConnection(player);
+            // createSession terminates any existing session on the group; clear our cache and
+            // re-subscribe playback for the current group id before creating the new session.
+            conn.InvalidateSession();
+            conn.Subscribed = false;
+        }
+
+        await EnsureSessionCoreAsync(player, appContext, forceCreate, cancellationToken).ConfigureAwait(false);
+        await LoadCloudQueueCoreAsync(player, request, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -905,19 +918,25 @@ public sealed class LanControlClient : IAsyncDisposable
                 var data = array.Count > 1 ? array[1] : null;
                 var cmdId = header?["cmdId"]?.GetValue<string>();
                 var command = header?["command"]?.GetValue<string>() ?? header?["type"]?.GetValue<string>();
-                if (Plugin.Instance?.Configuration.VerboseProtocolLogging == true)
-                {
-                    _logger.LogInformation("LAN WS recv command={Command} cmdId={CmdId} pending={Pending}", command, cmdId, !string.IsNullOrEmpty(cmdId) && _pending.ContainsKey(cmdId));
-                }
-
                 var headerType = header?["type"]?.GetValue<string>();
                 var obj = data as JsonObject;
                 var code = obj?["errorCode"]?.GetValue<string>() ?? headerType ?? string.Empty;
                 var reason = obj?["reason"]?.GetValue<string>() ?? obj?["errorCode"]?.GetValue<string>() ?? obj?["message"]?.GetValue<string>() ?? code;
-                if (ShouldInvalidateCachedSession(headerType, code, reason))
+                if (Plugin.Instance?.Configuration.VerboseProtocolLogging == true)
                 {
-                    InvalidateSession();
+                    _logger.LogInformation(
+                        "LAN WS recv command={Command} cmdId={CmdId} pending={Pending} error={ErrorCode} reason={Reason}",
+                        command,
+                        cmdId,
+                        !string.IsNullOrEmpty(cmdId) && _pending.ContainsKey(cmdId),
+                        string.IsNullOrEmpty(code) ? "-" : code,
+                        string.IsNullOrEmpty(reason) ? "-" : reason);
                 }
+
+                // createSession terminates the previous session and Sonos emits an unsolicited
+                // sessionError (often ERROR_SESSION_EVICTED) for that old session. Clearing our
+                // SessionId on every sessionError races loadCloudQueue and yields Missing sessionId.
+                MaybeInvalidateCachedSession(headerType, code, reason, obj);
 
                 if (string.IsNullOrEmpty(cmdId) || !_pending.TryRemove(cmdId, out var tcs))
                 {
@@ -959,6 +978,51 @@ public sealed class LanControlClient : IAsyncDisposable
             {
                 // Ignore malformed events.
             }
+        }
+
+        private void MaybeInvalidateCachedSession(string? headerType, string code, string reason, JsonObject? data)
+        {
+            if (!ShouldInvalidateCachedSession(headerType, code, reason))
+            {
+                return;
+            }
+
+            var errorSessionId = ReadErrorSessionId(data);
+            if (!string.IsNullOrEmpty(errorSessionId)
+                && !string.IsNullOrEmpty(SessionId)
+                && !string.Equals(errorSessionId, SessionId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug(
+                    "Ignoring session error for other session {OtherSession}; keeping {CurrentSession}",
+                    errorSessionId,
+                    SessionId);
+                return;
+            }
+
+            // Ambiguous unsolicited eviction (no sessionId in body) after createSession must not
+            // wipe the session we just created — loadCloudQueue would then send an empty sessionId.
+            if (string.IsNullOrEmpty(errorSessionId)
+                && string.Equals(code, "ERROR_SESSION_EVICTED", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(SessionId))
+            {
+                _logger.LogDebug(
+                    "Ignoring session eviction without sessionId while holding {CurrentSession}",
+                    SessionId);
+                return;
+            }
+
+            InvalidateSession();
+        }
+
+        private static string? ReadErrorSessionId(JsonObject? data)
+        {
+            if (data is null)
+            {
+                return null;
+            }
+
+            return data["sessionId"]?.GetValue<string>()
+                   ?? (data["session"] as JsonObject)?["sessionId"]?.GetValue<string>();
         }
 
         private static bool ShouldInvalidateCachedSession(string? headerType, string code, string reason)

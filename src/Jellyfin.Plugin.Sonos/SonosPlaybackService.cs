@@ -704,7 +704,8 @@ public sealed class SonosPlaybackService
                 "Reloading Cloud Queue on {Player} after grouping at {PositionMs}ms",
                 coordinator.Name,
                 queue.PositionTicks / TimeSpan.TicksPerMillisecond);
-            await StartCurrentAsync(coordinator, queue, published, queue.PositionTicks, cancellationToken).ConfigureAwait(false);
+            await StartCurrentAsync(coordinator, queue, published, queue.PositionTicks, cancellationToken, forceNewSession: true)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -712,7 +713,8 @@ public sealed class SonosPlaybackService
             try
             {
                 await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
-                await StartCurrentAsync(coordinator, queue, published, queue.PositionTicks, cancellationToken).ConfigureAwait(false);
+                await StartCurrentAsync(coordinator, queue, published, queue.PositionTicks, cancellationToken, forceNewSession: true)
+                    .ConfigureAwait(false);
             }
             catch (Exception retryEx)
             {
@@ -946,9 +948,11 @@ public sealed class SonosPlaybackService
         LogicalQueue queue,
         string published,
         long startPositionTicks,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? forceNewSession = null)
     {
         LogicalQueueItem? current;
+        bool force;
         lock (queue)
         {
             if (queue.Items.Count == 0)
@@ -957,10 +961,19 @@ public sealed class SonosPlaybackService
             }
 
             current = queue.Items[queue.CurrentIndex];
+            // Default: force createSession only for split-brain (we claim ownership but transport does not match).
+            // After Stop, reuse the LAN session. Grouping passes forceNewSession: true explicitly.
+            force = forceNewSession ?? ShouldForceNewSession(queue);
         }
 
         var mediaUrl = published + "/Sonos/stream/" + current.StreamToken;
-        var load = BuildLoadCloudQueueRequest(coordinator.Id, queue, current, published, startPositionTicks, forceNewSession: true);
+        var load = BuildLoadCloudQueueRequest(
+            coordinator.Id,
+            queue,
+            current,
+            published,
+            startPositionTicks,
+            force);
 
         try
         {
@@ -1331,7 +1344,7 @@ public sealed class SonosPlaybackService
     /// <param name="current">Item to start on.</param>
     /// <param name="published">Published base URL.</param>
     /// <param name="startPositionTicks">Resume offset into the item.</param>
-    /// <param name="forceNewSession">True to force createSession (Queue/Play).</param>
+    /// <param name="forceNewSession">True to force createSession (takeover / verify retry).</param>
     /// <returns>The load request.</returns>
     internal static LoadCloudQueueRequest BuildLoadCloudQueueRequest(
         string coordinatorId,
@@ -1339,7 +1352,7 @@ public sealed class SonosPlaybackService
         LogicalQueueItem current,
         string published,
         long startPositionTicks,
-        bool forceNewSession = true)
+        bool forceNewSession = false)
     {
         var positionMillis = startPositionTicks > 0
             ? (int)Math.Min(startPositionTicks / TimeSpan.TicksPerMillisecond, int.MaxValue)
@@ -1354,6 +1367,18 @@ public sealed class SonosPlaybackService
             ForceNewSession = forceNewSession,
             Extra = new Dictionary<string, string> { ["appContext"] = queue.UserId.ToString("N") }
         };
+    }
+
+    /// <summary>
+    /// True when Play should force <c>createSession</c> before loadCloudQueue.
+    /// Only when we still claim ownership but the speaker transport does not match (split-brain).
+    /// </summary>
+    /// <param name="queue">Logical queue.</param>
+    /// <returns>True for split-brain takeover.</returns>
+    internal static bool ShouldForceNewSession(LogicalQueue queue)
+    {
+        ArgumentNullException.ThrowIfNull(queue);
+        return queue.PluginOwned && !queue.TransportMatched;
     }
 
     /// <summary>

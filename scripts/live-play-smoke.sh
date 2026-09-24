@@ -40,8 +40,12 @@ api() {
   local method=$1 path=$2
   shift 2
   local tmp status
+  local curl_opts=(-sS)
+  if [[ "${SSL_NO_VERIFY:-0}" == "1" ]]; then
+    curl_opts+=(-k)
+  fi
   tmp="$(mktemp)"
-  status="$(curl -sS -o "$tmp" -w '%{http_code}' \
+  status="$(curl "${curl_opts[@]}" -o "$tmp" -w '%{http_code}' \
     -X "$method" \
     -H "$AUTH_HEADER" \
     -H 'Content-Type: application/json' \

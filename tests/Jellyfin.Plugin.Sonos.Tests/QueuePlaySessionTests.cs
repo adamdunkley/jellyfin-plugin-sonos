@@ -23,7 +23,7 @@ public sealed class QueuePlaySessionTests
         Assert.NotNull(load.TrackMetadata);
         Assert.Equal(0, load.PositionMillis);
         Assert.Equal("item-current", load.ItemId);
-        Assert.True(load.ForceNewSession);
+        Assert.False(load.ForceNewSession);
     }
 
     [Fact]
@@ -35,7 +35,30 @@ public sealed class QueuePlaySessionTests
         Assert.NotNull(load.TrackMetadata);
         Assert.Equal(3600, load.PositionMillis);
         Assert.Contains("tok", load.TrackMetadata!["mediaUrl"]?.GetValue<string>(), StringComparison.Ordinal);
+        Assert.False(load.ForceNewSession);
+    }
+
+    [Fact]
+    public void LoadCloudQueue_ForceNewSession_WhenRequested()
+    {
+        var load = BuildLoad(0, forceNewSession: true);
         Assert.True(load.ForceNewSession);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public void ShouldForceNewSession_OnlyWhenOwnedButUnmatched(bool owned, bool matched, bool expected)
+    {
+        var queue = new LogicalQueue
+        {
+            PluginOwned = owned,
+            TransportMatched = matched
+        };
+
+        Assert.Equal(expected, SonosPlaybackService.ShouldForceNewSession(queue));
     }
 
     [Fact]
@@ -97,6 +120,9 @@ public sealed class QueuePlaySessionTests
     [InlineData("error_invalid_object_id", "There is no session on this player.", true)]
     [InlineData("sessionError", "There is no session on this player.", true)]
     [InlineData("playbackError", "no session", true)]
+    [InlineData("ERROR_MISSING_PARAMETERS", "Missing sessionId", true)]
+    [InlineData("ERROR_MISSING_PARAMETERS", "missing SessionId in path", true)]
+    [InlineData("ERROR_MISSING_PARAMETERS", "Missing volume", false)]
     [InlineData("LanAuthRequired", "Speaker returned 403", false)]
     [InlineData("ERROR_CLOUD_QUEUE_SERVICE_ERROR", "cloud queue failed", false)]
     [InlineData("PlayerUnavailable", "loadCloudQueue timed out", false)]
@@ -120,7 +146,7 @@ public sealed class QueuePlaySessionTests
         Assert.Equal(expected, ex.IsMusicContextCopyFailure());
     }
 
-    private static LoadCloudQueueRequest BuildLoad(long startPositionTicks)
+    private static LoadCloudQueueRequest BuildLoad(long startPositionTicks, bool forceNewSession = false)
     {
         var current = new LogicalQueueItem
         {
@@ -144,6 +170,7 @@ public sealed class QueuePlaySessionTests
             queue,
             current,
             "http://192.0.2.10:8096",
-            startPositionTicks);
+            startPositionTicks,
+            forceNewSession);
     }
 }
