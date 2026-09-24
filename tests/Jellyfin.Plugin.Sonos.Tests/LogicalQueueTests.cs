@@ -167,6 +167,25 @@ public sealed class LogicalQueueTests
     }
 
     [Fact]
+    public void TryWipe_ThenGetOrCreate_ReturnsEmptyUnownedQueue()
+    {
+        var store = new LogicalQueueStore();
+        var owned = store.Replace("RINCON_A", [Item("a"), Item("b")], 1, Guid.NewGuid());
+        owned.PluginOwned = true;
+        owned.UsesCloudQueue = true;
+        owned.State = PlaybackState.Playing;
+
+        Assert.True(store.TryWipe("RINCON_A"));
+        var fresh = store.GetOrCreate("RINCON_A");
+
+        Assert.Empty(fresh.Items);
+        Assert.False(fresh.PluginOwned);
+        Assert.False(fresh.UsesCloudQueue);
+        Assert.Equal(PlaybackState.Stopped, fresh.State);
+        Assert.Equal(0, fresh.CurrentIndex);
+    }
+
+    [Fact]
     public void TrySyncCurrent_FollowsCloudQueueItemIdWithoutBumpingVersion()
     {
         var store = new LogicalQueueStore();

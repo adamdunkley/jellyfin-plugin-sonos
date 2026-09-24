@@ -230,7 +230,7 @@
         if (!coordinatorId) {
             return;
         }
-        stopSonosCoordinator(coordinatorId).then(function () {
+        clearSonosCoordinator(coordinatorId).then(function () {
             if (_activeCoordinatorId === coordinatorId) {
                 _activeCoordinatorId = null;
             }
@@ -245,7 +245,7 @@
         pm.__sonosDisconnectStop = true;
 
         // Cast menu Disconnect → setDefaultPlayerActive → setActivePlayer('localplayer')
-        // without a Stop. Mirror Sonos-panel "Play locally" and stop the speaker.
+        // without a Clear. Mirror Sonos-panel "Play locally" and clear the speaker queue.
         if (typeof pm.setActivePlayer === 'function') {
             var originalSet = pm.setActivePlayer.bind(pm);
             pm.setActivePlayer = function (player, target) {
@@ -964,6 +964,15 @@
         });
     }
 
+    function clearSonosCoordinator(coordinatorId) {
+        return ajax('Sonos/Queue/Clear', 'POST', {
+            targetId: coordinatorId
+        }).catch(function () {
+            // Older plugins or Clear failure: fall back to Stop (ownership clear only).
+            return stopSonosCoordinator(coordinatorId);
+        });
+    }
+
     function waitLocalIdle() {
         return waitFor(function () {
             return handoff().localIsIdle(playback());
@@ -1013,6 +1022,9 @@
 
     function localHandoffHelpers(captured) {
         return {
+            clearSonos: function (step) {
+                return clearSonosCoordinator(step.coordinatorId);
+            },
             stopSonos: function (step) {
                 return stopSonosCoordinator(step.coordinatorId);
             },
@@ -1032,6 +1044,9 @@
                 return handoff().haltLocalPlayback(playback());
             },
             waitLocalIdle: waitLocalIdle,
+            clearSonos: function (step) {
+                return clearSonosCoordinator(step.coordinatorId);
+            },
             stopSonos: function (step) {
                 return stopSonosCoordinator(step.coordinatorId);
             },

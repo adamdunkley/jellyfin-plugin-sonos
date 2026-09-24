@@ -50,6 +50,16 @@ public interface ISonosControlClient
     /// <summary>Asks the player to refetch the Cloud Queue window.</summary>
     Task RefreshCloudQueueAsync(DiscoveredPlayer player, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Tears down Cloud Queue / AVTransport queue on the coordinator so the Sonos app shows nothing queued.
+    /// LAN: pause, suspend, then <c>createSession</c> to evict the suspended source (clears container chrome).
+    /// SOAP: Stop, RemoveAllTracksFromQueue, empty SetAVTransportURI.
+    /// </summary>
+    /// <param name="player">Coordinator.</param>
+    /// <param name="appContext">Session appContext (usually Jellyfin user id N-format); used when rejoining a leftover session.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task ClearCloudQueueSessionAsync(DiscoveredPlayer player, string? appContext, CancellationToken cancellationToken);
+
     /// <summary>Sets repeat / shuffle / crossfade play modes. Repeat is None, All, or One.</summary>
     Task SetPlayModesAsync(DiscoveredPlayer player, string repeat, bool shuffle, bool crossfade, CancellationToken cancellationToken);
 

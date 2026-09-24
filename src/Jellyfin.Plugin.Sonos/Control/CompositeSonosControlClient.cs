@@ -121,6 +121,30 @@ public sealed class CompositeSonosControlClient : ISonosControlClient
     }
 
     /// <inheritdoc />
+    public async Task ClearCloudQueueSessionAsync(DiscoveredPlayer player, string? appContext, CancellationToken cancellationToken)
+    {
+        // Prefer LAN session teardown, then always best-effort SOAP wipe so residual
+        // container / artwork chrome does not linger in the Sonos app after suspend.
+        try
+        {
+            await _lan.ClearCloudQueueSessionAsync(player, appContext, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not SonosControlException { ErrorCode: "LanAuthRequired" })
+        {
+            _logger.LogDebug(ex, "LAN Clear failed; continuing with SOAP wipe for {Player}", player.Id);
+        }
+
+        try
+        {
+            await _soap.ClearCloudQueueSessionAsync(player, appContext, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not SonosControlException { ErrorCode: "LanAuthRequired" })
+        {
+            _logger.LogDebug(ex, "SOAP Clear wipe failed for {Player}", player.Id);
+        }
+    }
+
+    /// <inheritdoc />
     public Task SetPlayModesAsync(DiscoveredPlayer player, string repeat, bool shuffle, bool crossfade, CancellationToken cancellationToken)
         => PreferLanAsync(
             player,

@@ -292,7 +292,7 @@ test('sameQueue requires identical ids and the same current item', () => {
     }), false);
 });
 
-test('speaker to local: stop Sonos and wait idle before bindLocal then playLocal', () => {
+test('speaker to local: clear Sonos and wait idle before bindLocal then playLocal', () => {
     const steps = H.plan({
         destination: 'local',
         currentlyRemote: true,
@@ -303,16 +303,16 @@ test('speaker to local: stop Sonos and wait idle before bindLocal then playLocal
     });
 
     assert.deepEqual(steps.map((s) => s.type), [
-        'stopSonos',
+        'clearSonos',
         'waitSonosIdle',
         'bindLocal',
         'playLocal'
     ]);
     assert.equal(steps[0].coordinatorId, 'RINCON_A');
-    assert.ok(!steps.some((s) => s.type === 'bindSonos' || s.type === 'playSonosApi' || s.type === 'playCaptured'));
+    assert.ok(!steps.some((s) => s.type === 'bindSonos' || s.type === 'playSonosApi' || s.type === 'playCaptured' || s.type === 'stopSonos'));
 });
 
-test('speaker to local without a captured queue only stops Sonos and binds the bar', () => {
+test('speaker to local without a captured queue only clears Sonos and binds the bar', () => {
     const steps = H.plan({
         destination: 'local',
         currentlyRemote: true,
@@ -321,7 +321,7 @@ test('speaker to local without a captured queue only stops Sonos and binds the b
     });
 
     assert.deepEqual(steps.map((s) => s.type), [
-        'stopSonos',
+        'clearSonos',
         'waitSonosIdle',
         'bindLocal'
     ]);
@@ -507,8 +507,8 @@ test('execute sonos-to-local plays only after Remote Control is unbound', async 
         currentCoordinatorId: 'RINCON_A',
         hasQueue: true
     }), {
-        stopSonos(step) {
-            order.push('stopSonos:' + step.coordinatorId);
+        clearSonos(step) {
+            order.push('clearSonos:' + step.coordinatorId);
         },
         waitSonosIdle() {
             order.push('waitSonosIdle');
@@ -532,7 +532,7 @@ test('execute sonos-to-local plays only after Remote Control is unbound', async 
     });
 
     assert.deepEqual(order, [
-        'stopSonos:RINCON_A',
+        'clearSonos:RINCON_A',
         'waitSonosIdle',
         'bindLocal',
         'setDefaultPlayerActive',

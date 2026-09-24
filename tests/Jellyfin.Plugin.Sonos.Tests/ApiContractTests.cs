@@ -86,6 +86,37 @@ public sealed class ApiContractTests
         Assert.Contains("\"transportMatched\":true", json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ClearQueueRequest_SerializesTargetId()
+    {
+        var json = JsonSerializer.Serialize(
+            new ClearQueueRequest { TargetId = "RINCON_A" },
+            JsonOptions);
+
+        Assert.Equal("""{"targetId":"RINCON_A"}""", json);
+    }
+
+    [Fact]
+    public void EmptyQueueResponse_AfterClear_SerializesIdleShape()
+    {
+        var json = JsonSerializer.Serialize(
+            new QueueResponse
+            {
+                CoordinatorId = "RINCON_A",
+                State = PlaybackState.Stopped,
+                PluginOwned = false,
+                UsesCloudQueue = false,
+                TransportMatched = false,
+                Items = []
+            },
+            JsonOptions);
+
+        Assert.Contains("\"state\":\"stopped\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"pluginOwned\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"items\":[]", json, StringComparison.Ordinal);
+        Assert.Contains("\"usesCloudQueue\":false", json, StringComparison.Ordinal);
+    }
+
     private static PlayerRegistry CreateRegistry(params string[] ignoredIds)
     {
         var ignored = new HashSet<string>(ignoredIds, StringComparer.OrdinalIgnoreCase);

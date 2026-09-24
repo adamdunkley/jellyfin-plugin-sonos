@@ -410,6 +410,41 @@ Current-track index is preserved when that slot remains; otherwise it is clamped
 | 404 | `PlayerNotFound`, `QueueNotFound` |
 | 409 | speaker control errors |
 
+### `POST /Sonos/Queue/Clear`
+
+Full teardown for cast-back to local: stops/pauses transport, suspends the LAN Cloud Queue session (or clears the SOAP AVTransport queue), and wipes the plugin logical queue so the Sonos app shows nothing queued.
+
+Does **not** ungroup rooms — clients remove non-coordinator members first when leaving a multi-room cast.
+
+**Body** `ClearQueueRequest`
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `targetId` | string | yes | Player or group id (resolved to the coordinator). |
+
+```json
+{ "targetId": "RINCON_TESTPLAYER1" }
+```
+
+Server order:
+
+1. Pause transport and suspend the LAN `playbackSession` (reattach with `joinOrCreateSession` if the cached session id was lost), then `createSession` to **evict** the suspended session (suspend alone leaves this app as the Sonos “source” with leftover artwork / container name).
+2. Best-effort SOAP `Stop`, `RemoveAllTracksFromQueue`, and empty `SetAVTransportURI` to clear residual transport metadata.
+3. Wipe the logical queue store entry for that coordinator.
+4. Return an empty `QueueResponse` (`items: []`, `pluginOwned: false`, `state: Stopped`).
+
+Clear is idempotent: no prior queue still returns **200** empty (not `QueueNotFound`). Speaker control failures other than `LanAuthRequired` are logged and the wipe still proceeds (best-effort) so clients can continue local play.
+
+**200** `QueueResponse` — empty snapshot.
+
+| Status | `error` |
+| --- | --- |
+| 400 | `InvalidTarget` |
+| 403 | `PluginDisabled`, `LanAuthRequired` |
+| 404 | `PlayerNotFound` |
+
+Typical cast-back order: snapshot → `Playstate` `Stop` (optional; Clear also silences) → ungroup non-coordinators → `Queue/Clear` → unbind → play locally.
+
 ### `POST /Sonos/Queue/Move`
 
 Moves one slot. Indexes are into the current `items` array.

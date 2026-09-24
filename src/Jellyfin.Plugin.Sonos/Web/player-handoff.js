@@ -500,7 +500,14 @@
     };
 
     H.sonosQueueIsIdle = function (queue) {
-        var state = queue && (queue.state || queue.State);
+        if (!queue) {
+            return true;
+        }
+        var items = queue.items || queue.Items || [];
+        if (!H.pluginOwned(queue) && !items.length) {
+            return true;
+        }
+        var state = queue.state || queue.State;
         return state == null || state === 'Stopped' || state === 0 || state === '0';
     };
 
@@ -535,7 +542,7 @@
 
         if (intent.destination === 'local') {
             if (current) {
-                steps.push({ type: 'stopSonos', coordinatorId: current });
+                steps.push({ type: 'clearSonos', coordinatorId: current });
                 steps.push({ type: 'waitSonosIdle', coordinatorId: current });
             }
             steps.push({ type: 'bindLocal' });

@@ -190,6 +190,101 @@ public sealed class LanControlClient : IAsyncDisposable
     public Task RefreshCloudQueueAsync(DiscoveredPlayer player, CancellationToken cancellationToken)
         => SessionCommandAsync(player, "playbackSession", "refreshCloudQueue", new JsonObject(), cancellationToken);
 
+    /// <summary>
+    /// Pauses transport, suspends then evicts the Cloud Queue session, and drops the cached session id.
+    /// </summary>
+    /// <param name="player">Coordinator.</param>
+    /// <param name="appContext">Session appContext used when rejoining.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task.</returns>
+    public Task ClearCloudQueueSessionAsync(DiscoveredPlayer player, string? appContext, CancellationToken cancellationToken)
+    {
+        return _gate.RunAsync(
+            player.Id,
+            async () =>
+            {
+                await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
+                var conn = RequireConnection(player);
+                var ctx = string.IsNullOrWhiteSpace(appContext) ? "default" : appContext;
+
+                try
+                {
+                    await SendOnAsync(
+                            conn,
+                            "playback",
+                            "pause",
+                            new JsonObject { ["groupId"] = conn.GroupId },
+                            new JsonObject(),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Pause before Clear failed on {Player}", player.Name);
+                }
+
+                if (string.IsNullOrEmpty(conn.SessionId))
+                {
+                    try
+                    {
+                        await EnsureSessionCoreAsync(player, ctx, forceCreate: false, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Could not join session before Clear on {Player}", player.Name);
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(conn.SessionId))
+                {
+                    try
+                    {
+                        await SendOnAsync(
+                                conn,
+                                "playbackSession",
+                                "suspend",
+                                new JsonObject { ["sessionId"] = conn.SessionId },
+                                new JsonObject(),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (SonosControlException ex) when (string.Equals(ex.ErrorCode, "LanAuthRequired", StringComparison.OrdinalIgnoreCase))
+                    {
+                        conn.InvalidateSession();
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Suspend session failed on {Player}", player.Name);
+                    }
+                }
+
+                // Suspend clears the item window but leaves this app as the suspended source
+                // (Sonos app still shows container name / artwork). createSession evicts that session.
+                try
+                {
+                    await EnsureSessionCoreAsync(player, ctx, forceCreate: true, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (SonosControlException ex) when (string.Equals(ex.ErrorCode, "LanAuthRequired", StringComparison.OrdinalIgnoreCase))
+                {
+                    conn.InvalidateSession();
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "createSession eviction after Clear failed on {Player}", player.Name);
+                }
+                finally
+                {
+                    // Abandon the replacement session without loadCloudQueue so we do not re-bind UI.
+                    conn.InvalidateSession();
+                }
+            },
+            cancellationToken);
+    }
+
     /// <summary>Playback play.</summary>
     /// <param name="player">Coordinator.</param>
     /// <param name="cancellationToken">Cancellation token.</param>

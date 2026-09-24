@@ -165,6 +165,47 @@ public sealed class SoapAvTransportClient : ISonosControlClient
         => Task.CompletedTask;
 
     /// <inheritdoc />
+    public async Task ClearCloudQueueSessionAsync(DiscoveredPlayer player, string? appContext, CancellationToken cancellationToken)
+    {
+        _ = appContext;
+        try
+        {
+            await StopAsync(player, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "SOAP Stop before Clear failed on {Player}", player.Name);
+        }
+
+        try
+        {
+            await AvAsync(player, "RemoveAllTracksFromQueue", string.Empty, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SonosControlException ex) when (string.Equals(ex.ErrorCode, "LanAuthRequired", StringComparison.OrdinalIgnoreCase))
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "SOAP RemoveAllTracksFromQueue failed on {Player}", player.Name);
+        }
+
+        // Wipe residual container / artwork chrome the Sonos app keeps after Cloud Queue suspend.
+        try
+        {
+            await SetAvTransportUriAsync(player, string.Empty, string.Empty, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SonosControlException ex) when (string.Equals(ex.ErrorCode, "LanAuthRequired", StringComparison.OrdinalIgnoreCase))
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "SOAP empty SetAVTransportURI failed on {Player}", player.Name);
+        }
+    }
+
+    /// <inheritdoc />
     public Task SetPlayModesAsync(DiscoveredPlayer player, string repeat, bool shuffle, bool crossfade, CancellationToken cancellationToken)
     {
         var playMode = PlayModeMapper.ToSoapPlayMode(repeat, shuffle);

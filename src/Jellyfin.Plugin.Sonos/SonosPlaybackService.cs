@@ -240,6 +240,48 @@ public sealed class SonosPlaybackService
     }
 
     /// <summary>
+    /// Stops transport, suspends Cloud Queue (or clears SOAP queue), and wipes the logical queue.
+    /// </summary>
+    /// <param name="request">Clear request.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Empty queue snapshot or problem.</returns>
+    public async Task<ActionResult> ClearAsync(ClearQueueRequest request, CancellationToken cancellationToken)
+    {
+        if (TryDisabled(out var disabled))
+        {
+            return disabled;
+        }
+
+        if (!_targets.TryResolve(request.TargetId, out var coordinator, out var error))
+        {
+            return error!;
+        }
+
+        string? appContext = null;
+        if (_queues.TryGet(coordinator.Id, out var prior) && prior.UserId != Guid.Empty)
+        {
+            appContext = prior.UserId.ToString("N");
+        }
+
+        try
+        {
+            await _control.ClearCloudQueueSessionAsync(coordinator, appContext, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SonosControlException ex) when (string.Equals(ex.ErrorCode, "LanAuthRequired", StringComparison.OrdinalIgnoreCase))
+        {
+            _queues.TryWipe(coordinator.Id);
+            return MapControlException(ex, coordinator);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ClearCloudQueueSession failed for {Player}; wiping logical queue anyway", coordinator.Name);
+        }
+
+        _queues.TryWipe(coordinator.Id);
+        return await GetQueueAsync(coordinator.Id, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Moves a queue item.
     /// </summary>
     /// <param name="request">Move request.</param>

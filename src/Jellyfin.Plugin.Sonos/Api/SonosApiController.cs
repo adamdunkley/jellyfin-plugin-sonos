@@ -102,6 +102,17 @@ public class SonosApiController : ControllerBase
         => _playback.RemoveAsync(request, cancellationToken);
 
     /// <summary>
+    /// Stops transport, suspends the Cloud Queue session, and wipes the logical queue.
+    /// </summary>
+    /// <param name="request">Clear body.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Empty queue snapshot.</returns>
+    [HttpPost("Queue/Clear")]
+    [ProducesResponseType(typeof(QueueResponse), StatusCodes.Status200OK)]
+    public Task<ActionResult> ClearAsync([FromBody] ClearQueueRequest request, CancellationToken cancellationToken)
+        => _playback.ClearAsync(request, cancellationToken);
+
+    /// <summary>
     /// Moves a queue item.
     /// </summary>
     /// <param name="request">Move body.</param>
