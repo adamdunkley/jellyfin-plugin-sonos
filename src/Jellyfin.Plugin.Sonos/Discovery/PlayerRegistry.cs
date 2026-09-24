@@ -256,6 +256,8 @@ public sealed class PlayerRegistry
 
     /// <summary>
     /// Marks a player as a standalone coordinator after leaving a group.
+    /// Clears <see cref="DiscoveredPlayer.GroupId"/> so the next LAN <c>getGroups</c> can fill the live
+    /// <c>RINCON_…:epoch</c> id. Do not write a bare RINCON — that breaks <c>createSession</c>.
     /// </summary>
     /// <param name="playerId">Player id.</param>
     public void ApplyStandalone(string playerId)
@@ -265,7 +267,7 @@ public sealed class PlayerRegistry
             return;
         }
 
-        player.GroupId = player.Id;
+        player.GroupId = null;
         player.IsCoordinator = true;
     }
 

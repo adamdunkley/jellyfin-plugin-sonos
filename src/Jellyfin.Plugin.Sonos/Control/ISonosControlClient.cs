@@ -70,4 +70,10 @@ public interface ISonosControlClient
         IReadOnlyList<string> playerIdsToAdd,
         IReadOnlyList<string> playerIdsToRemove,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Clears cached LAN group id / session for a player so the next command re-resolves via getGroups.
+    /// </summary>
+    /// <param name="playerId">Player id.</param>
+    void InvalidateGroupCache(string playerId);
 }

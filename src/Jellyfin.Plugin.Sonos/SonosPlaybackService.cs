@@ -525,6 +525,7 @@ public sealed class SonosPlaybackService
             foreach (var id in remove)
             {
                 _registry.ApplyStandalone(id);
+                _control.InvalidateGroupCache(id);
             }
         }
         catch (SonosControlException ex)

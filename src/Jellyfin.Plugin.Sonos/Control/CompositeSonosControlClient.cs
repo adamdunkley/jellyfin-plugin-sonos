@@ -119,6 +119,9 @@ public sealed class CompositeSonosControlClient : ISonosControlClient
         CancellationToken cancellationToken)
         => _lan.ModifyGroupMembersAsync(player, groupId, playerIdsToAdd, playerIdsToRemove, cancellationToken);
 
+    /// <inheritdoc />
+    public void InvalidateGroupCache(string playerId) => _lan.InvalidateGroupCache(playerId);
+
     private async Task PreferLanAsync(DiscoveredPlayer player, Func<Task> lan, Func<Task> soap)
     {
         if (_lan.HasSession(player.Id))

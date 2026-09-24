@@ -42,6 +42,25 @@ public sealed class LanControlClient : IAsyncDisposable
            && !string.IsNullOrEmpty(conn.SessionId);
 
     /// <summary>
+    /// Clears cached group id and session for a player so the next command re-resolves via getGroups.
+    /// </summary>
+    /// <param name="playerId">Player id.</param>
+    public void InvalidateGroupCache(string playerId)
+    {
+        if (string.IsNullOrEmpty(playerId))
+        {
+            return;
+        }
+
+        if (_connections.TryGetValue(playerId, out var conn))
+        {
+            conn.GroupId = string.Empty;
+            conn.InvalidateSession();
+            conn.Subscribed = false;
+        }
+    }
+
+    /// <summary>
     /// Ensures a websocket is connected for the player.
     /// </summary>
     /// <param name="player">Coordinator.</param>
@@ -414,10 +433,9 @@ public sealed class LanControlClient : IAsyncDisposable
             conn.HouseholdId = player.HouseholdId ?? string.Empty;
         }
 
-        if (string.IsNullOrEmpty(conn.GroupId))
+        if (!string.IsNullOrEmpty(conn.HouseholdId))
         {
-            conn.GroupId = player.GroupId ?? string.Empty;
-            if (!string.IsNullOrEmpty(conn.HouseholdId))
+            try
             {
                 var groups = await SendOnAsync(
                     conn,
@@ -426,8 +444,23 @@ public sealed class LanControlClient : IAsyncDisposable
                     new JsonObject { ["householdId"] = conn.HouseholdId },
                     new JsonObject { ["includeDeviceInfo"] = false },
                     cancellationToken).ConfigureAwait(false);
-                conn.GroupId = ResolveGroupId(groups, player) ?? conn.GroupId;
+                var resolved = ResolveGroupId(groups, player);
+                if (!string.IsNullOrEmpty(resolved))
+                {
+                    conn.GroupId = resolved;
+                    player.GroupId = resolved;
+                    return;
+                }
             }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "getGroups refresh failed for {Player}; using cached group id", player.Id);
+            }
+        }
+
+        if (string.IsNullOrEmpty(conn.GroupId))
+        {
+            conn.GroupId = player.GroupId ?? string.Empty;
         }
 
         if (string.IsNullOrEmpty(conn.GroupId))
@@ -528,6 +561,28 @@ public sealed class LanControlClient : IAsyncDisposable
     private async Task EnsureSessionCoreAsync(DiscoveredPlayer player, string appContext, bool forceCreate, CancellationToken cancellationToken)
     {
         await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await EnsureSessionCoreOnceAsync(player, appContext, forceCreate, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SonosControlException ex) when (IsStaleGroupSessionError(ex))
+        {
+            _logger.LogInformation(
+                "Stale group/session on {Player} ({ErrorCode}); refreshing group id and retrying",
+                player.Name,
+                ex.ErrorCode);
+            InvalidateGroupCache(player.Id);
+            await EnsureConnectedCoreAsync(player, cancellationToken).ConfigureAwait(false);
+            await EnsureSessionCoreOnceAsync(player, appContext, forceCreate: true, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task EnsureSessionCoreOnceAsync(
+        DiscoveredPlayer player,
+        string appContext,
+        bool forceCreate,
+        CancellationToken cancellationToken)
+    {
         var conn = RequireConnection(player);
 
         if (!conn.Subscribed)
@@ -602,6 +657,16 @@ public sealed class LanControlClient : IAsyncDisposable
         }
 
         await EnsurePlaybackSessionSubscribedAsync(conn, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool IsStaleGroupSessionError(SonosControlException ex)
+    {
+        if (string.Equals(ex.ErrorCode, "CommandFailed", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return ex.IsMissingPlaybackSession();
     }
 
     private static async Task EnsurePlaybackSessionSubscribedAsync(PlayerConnection conn, CancellationToken cancellationToken)

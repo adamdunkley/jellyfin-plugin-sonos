@@ -170,6 +170,26 @@ public sealed class ApiContractTests
     }
 
     [Fact]
+    public void PlayerRegistry_ApplyStandalone_ClearsGroupIdAndDoesNotWriteBareRincon()
+    {
+        var registry = CreateRegistry();
+        registry.Upsert(new PlayerInfo
+        {
+            Id = "RINCON_OFFICE",
+            Name = "Office",
+            GroupId = "RINCON_LIVING:123",
+            IsCoordinator = false
+        });
+
+        registry.ApplyStandalone("RINCON_OFFICE");
+
+        Assert.True(registry.TryGet("RINCON_OFFICE", out var office));
+        Assert.True(office.IsCoordinator);
+        Assert.True(string.IsNullOrEmpty(office.GroupId));
+        Assert.NotEqual("RINCON_OFFICE", office.GroupId);
+    }
+
+    [Fact]
     public void ParseIgnoredIds_SplitsCommaSeparated()
     {
         var ids = PlayerRegistry.ParseIgnoredIds(" RINCON_A , ,RINCON_B ");

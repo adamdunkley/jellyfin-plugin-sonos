@@ -171,6 +171,11 @@ public sealed class SoapAvTransportClient : ISonosControlClient
         CancellationToken cancellationToken)
         => throw new SonosControlException("NotSupported", "SOAP client cannot modifyGroupMembers");
 
+    /// <inheritdoc />
+    public void InvalidateGroupCache(string playerId)
+    {
+    }
+
     private Task<string> AvAsync(DiscoveredPlayer player, string action, string extra, CancellationToken cancellationToken)
     {
         var body = "<u:" + action + " xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\"><InstanceID>0</InstanceID>" + extra + "</u:" + action + ">";
